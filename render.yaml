@@ -1,0 +1,90 @@
+services:
+  - type: web
+    name: lulit-backend
+    runtime: docker
+    repo: https://github.com/lalitkishore07/Lulit.git
+    rootDir: backend
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: SERVER_PORT
+        value: 8080
+      - key: HIBERNATE_DDL_AUTO
+        value: validate
+      - key: COOKIE_SECURE
+        value: true
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: AES_KEY
+        sync: false
+      - key: JWT_SECRET_BASE64
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: OAUTH2_SUCCESS_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: PINATA_JWT
+        sync: false
+      - key: BLOCKCHAIN_ENABLED
+        value: true
+      - key: BLOCKCHAIN_RPC_URL
+        sync: false
+      - key: BLOCKCHAIN_PRIVATE_KEY
+        sync: false
+      - key: BLOCKCHAIN_CONTRACT_ADDRESS
+        sync: false
+      - key: DAO_ENABLED
+        value: true
+      - key: DAO_RPC_URL
+        sync: false
+      - key: DAO_TOKEN_ADDRESS
+        sync: false
+      - key: DAO_GOVERNANCE_ADDRESS
+        sync: false
+      - key: DAO_TREASURY_ADDRESS
+        sync: false
+      - key: AI_ENABLED
+        value: true
+      - key: AI_EMBEDDING_ENDPOINT
+        sync: false
+      - key: AI_MODERATION_ENDPOINT
+        sync: false
+      - key: AI_SUMMARY_ENDPOINT
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: TEXTBELT_API_KEY
+        sync: false
+
+  - type: web
+    name: lulit-ai-service
+    runtime: docker
+    repo: https://github.com/lalitkishore07/Lulit.git
+    rootDir: ai-service
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: OLLAMA_ENABLED
+        value: false
+      - key: AI_TIMEOUT_SECONDS
+        value: 8
+      - key: AI_FALLBACK_DIM
+        value: 128

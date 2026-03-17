@@ -74,6 +74,7 @@ public class SecurityConfig {
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                                 .authorizeHttpRequests(auth -> auth
                                                 .requestMatchers("/api/v1/auth/**").permitAll()
+                                                .requestMatchers("/api/v1/health").permitAll()
                                                 .requestMatchers("/api/v1/dao/proposals",
                                                                 "/api/v1/dao/proposals/**")
                                                 .permitAll()

@@ -1,0 +1,8 @@
+target
+.mvn
+.env
+.env.*
+data
+data-backup-*
+README.md
+docs

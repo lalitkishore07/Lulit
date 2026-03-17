@@ -42,6 +42,8 @@ This repo is currently optimized for local development. To make it reachable by 
 
 Use `backend/Dockerfile` on your host of choice.
 
+If you deploy on Render, this repo now includes `render.yaml` for the backend and AI service so you can create services from the GitHub repo with fewer manual steps.
+
 Required production changes:
 
 - move `DB_URL` to PostgreSQL
@@ -81,6 +83,8 @@ dist
 
 Set production env vars from `frontend/.env.production.example`.
 
+For Vercel, import the GitHub repo, set the project root to `frontend`, use the default Vite build, and set the variables from `frontend/.env.production.example`.
+
 ## Mobile App Deployment
 
 To make the mobile app accessible without your laptop:
@@ -108,6 +112,13 @@ Then distribute through:
 
 For JS-only changes after release, use EAS Update after the project is initialized.
 
+Before the first store build, make sure you:
+
+1. log in with Expo
+2. run `npx eas init`
+3. confirm the Android package and iOS bundle identifier in `mobile-app/app.json`
+4. add the production API and DAO URLs in Expo secrets or build env vars
+
 ## DAO Production Notes
 
 For public DAO access:
@@ -132,8 +143,8 @@ For public DAO access:
 If you want the fastest path:
 
 1. host frontend on Vercel
-2. host backend on Render using `backend/Dockerfile`
-3. host AI service on Render using `ai-service/Dockerfile`
+2. host backend on Render using `render.yaml`
+3. host AI service on Render using `render.yaml`
 4. move DB to Neon Postgres
 5. build Android app with EAS and distribute the APK/AAB
 
