@@ -1,0 +1,22 @@
+<svg width="520" height="220" viewBox="0 0 520 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lulitBlue" x1="58" y1="47" x2="182" y2="173" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3853B6" />
+      <stop offset="1" stop-color="#1D2C87" />
+    </linearGradient>
+    <linearGradient id="lulitPink" x1="104" y1="27" x2="218" y2="155" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5F8A" />
+      <stop offset="1" stop-color="#B72C75" />
+    </linearGradient>
+    <filter id="soft" x="0" y="0" width="520" height="220" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-opacity="0.12" />
+    </filter>
+  </defs>
+  <g filter="url(#soft)">
+    <circle cx="110" cy="100" r="76" stroke="url(#lulitBlue)" stroke-width="30" stroke-dasharray="300 177" transform="rotate(124 110 100)" />
+    <circle cx="144" cy="84" r="64" stroke="url(#lulitPink)" stroke-width="30" stroke-dasharray="255 147" transform="rotate(-36 144 84)" />
+    <path d="M91 48V109C91 124.464 103.536 137 119 137H161" stroke="white" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M118 84H160C173.255 84 184 94.7452 184 108V131C184 144.255 173.255 155 160 155H149C135.745 155 125 144.255 125 131V101" stroke="white" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+  <text x="236" y="129" fill="#243A9A" font-family="'Space Grotesk', 'Manrope', sans-serif" font-size="78" font-weight="700" letter-spacing="6">LULIT</text>
+</svg>

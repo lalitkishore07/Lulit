@@ -1,0 +1,18 @@
+{
+  "name": "lulit-smart-contract",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:post": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:dao:sepolia": "hardhat run scripts/deploy-dao.js --network sepolia",
+    "verify:sepolia": "hardhat verify --network sepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.19"
+  }
+}

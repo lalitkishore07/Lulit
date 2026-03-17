@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:lulit;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+app:
+  security:
+    aes-key: 0123456789abcdef0123456789abcdef
+    jwt-secret: VGhpc0lzQVN1ZmZpY2llbnRseUxvbmdCYXNlNjRTZWNyZXRLZXlGb3JMVUxJVA==

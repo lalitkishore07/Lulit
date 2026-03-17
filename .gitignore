@@ -1,0 +1,54 @@
+# === Java / Maven ===
+backend/target/
+backend/data/
+backend/data-backup-*/
+*.class
+*.jar
+*.log
+
+# === Node.js ===
+node_modules/
+dist/
+.cache/
+
+# === Environment & Secrets ===
+.env
+.env.local
+.env.*.local
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+*.swp
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Hardhat / Solidity ===
+smart-contract/artifacts/
+smart-contract/cache/
+smart-contract/typechain-types/
+
+# === Mobile App ===
+mobile-app/.expo/
+mobile-app/.expo-shared/
+mobile-app/android/.gradle/
+mobile-app/android/app/build/
+mobile-app/android/local.properties
+mobile-app/ios/build/
+
+# === AI Service ===
+ai-service/__pycache__/
+ai-service/.venv/
+*.pyc
+
+# === Logs & Crash Dumps ===
+*.log
+hs_err_pid*.log
+run-logs/
+
+# === Build Outputs ===
+frontend/dist/

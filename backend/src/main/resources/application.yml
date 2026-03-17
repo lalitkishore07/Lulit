@@ -1,0 +1,148 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:./data/lulit;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;AUTO_SERVER=TRUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${HIBERNATE_DDL_AUTO:update}
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  jackson:
+    time-zone: UTC
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:50MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:50MB}
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:disabled-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:disabled-google-client-secret}
+            scope:
+              - openid
+              - profile
+              - email
+          github:
+            client-id: ${GITHUB_CLIENT_ID:disabled-github-client-id}
+            client-secret: ${GITHUB_CLIENT_SECRET:disabled-github-client-secret}
+            scope:
+              - read:user
+              - user:email
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  otp:
+    brand-name: ${OTP_BRAND_NAME:Lulit}
+    email-provider: ${OTP_EMAIL_PROVIDER:resend}
+    sms-provider: ${OTP_SMS_PROVIDER:console}
+  security:
+    aes-key: ${AES_KEY:0123456789abcdef0123456789abcdef}
+    jwt-secret: ${JWT_SECRET_BASE64:VGhpc0lzQVN1ZmZpY2llbnRseUxvbmdCYXNlNjRTZWNyZXRLZXlGb3JMVUxJVA==}
+    access-token-minutes: ${ACCESS_TOKEN_MINUTES:15}
+    refresh-token-days: ${REFRESH_TOKEN_DAYS:30}
+    cors-origin: ${CORS_ORIGIN:http://localhost:5173}
+    oauth2:
+      success-redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:5173/oauth/callback}
+    cookies:
+      secure: ${COOKIE_SECURE:false}
+  ipfs:
+    pinata-jwt: ${PINATA_JWT:}
+    gateway: ${IPFS_GATEWAY:https://gateway.pinata.cloud/ipfs}
+  blockchain:
+    enabled: ${BLOCKCHAIN_ENABLED:false}
+    rpc-url: ${BLOCKCHAIN_RPC_URL:}
+    private-key: ${BLOCKCHAIN_PRIVATE_KEY:}
+    contract-address: ${BLOCKCHAIN_CONTRACT_ADDRESS:}
+  dao:
+    enabled: ${DAO_ENABLED:false}
+    rpc-url: ${DAO_RPC_URL:}
+    token-address: ${DAO_TOKEN_ADDRESS:}
+    governance-address: ${DAO_GOVERNANCE_ADDRESS:}
+    treasury-address: ${DAO_TREASURY_ADDRESS:}
+    ipfs-gateway: ${DAO_IPFS_GATEWAY:https://gateway.pinata.cloud/ipfs}
+    nonce-ttl-seconds: ${DAO_NONCE_TTL_SECONDS:300}
+    default-quorum-bps: ${DAO_DEFAULT_QUORUM_BPS:2000}
+  moderation:
+    enabled: ${MODERATION_ENABLED:true}
+    review-hours: ${MODERATION_REVIEW_HOURS:24}
+    toxicity-threshold: ${MODERATION_TOXICITY_THRESHOLD:0.55}
+    spam-threshold: ${MODERATION_SPAM_THRESHOLD:0.65}
+    fake-news-threshold: ${MODERATION_FAKE_NEWS_THRESHOLD:0.70}
+    ai-generated-threshold: ${MODERATION_AI_GENERATED_THRESHOLD:0.85}
+    plagiarism-threshold: ${MODERATION_PLAGIARISM_THRESHOLD:0.80}
+    bot-risk-threshold: ${MODERATION_BOT_RISK_THRESHOLD:0.70}
+    authenticity-min-threshold: ${MODERATION_AUTHENTICITY_MIN_THRESHOLD:0.35}
+  upload:
+    max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:52428800}
+    allowed-mime-types: ${UPLOAD_ALLOWED_MIME_TYPES:image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime}
+    rate-limit:
+      window-seconds: ${UPLOAD_RATE_LIMIT_WINDOW_SECONDS:60}
+      max-requests: ${UPLOAD_RATE_LIMIT_MAX_REQUESTS:10}
+  duplicate:
+    compare-limit: ${DUPLICATE_COMPARE_LIMIT:500}
+    thresholds:
+      phash: ${DUPLICATE_PHASH_THRESHOLD:0.90}
+      embedding: ${DUPLICATE_EMBEDDING_THRESHOLD:0.95}
+    embedding:
+      provider: ${DUPLICATE_EMBEDDING_PROVIDER:hash-fallback}
+      endpoint: ${DUPLICATE_EMBEDDING_ENDPOINT:}
+      dimension: ${DUPLICATE_EMBEDDING_DIMENSION:128}
+      timeout-ms: ${DUPLICATE_EMBEDDING_TIMEOUT_MS:4000}
+  ai:
+    enabled: ${AI_ENABLED:true}
+    timeout-ms: ${AI_TIMEOUT_MS:5000}
+    fallback-embedding-dim: ${AI_FALLBACK_EMBEDDING_DIM:128}
+    endpoints:
+      embedding: ${AI_EMBEDDING_ENDPOINT:}
+      moderation: ${AI_MODERATION_ENDPOINT:}
+      summary: ${AI_SUMMARY_ENDPOINT:}
+  providers:
+    resend:
+      api-key: ${RESEND_API_KEY:}
+      from-email: ${RESEND_FROM_EMAIL:no-reply@lulit.local}
+    textbelt:
+      url: ${TEXTBELT_URL:https://textbelt.com/text}
+      api-key: ${TEXTBELT_API_KEY:textbelt}
+
+logging:
+  level:
+    org.hibernate.SQL: INFO
+    com.lulit.backend: ${LOG_LEVEL:INFO}
+
+---
+# Production profile — activate with SPRING_PROFILES_ACTIVE=prod
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+app:
+  security:
+    cookies:
+      secure: true

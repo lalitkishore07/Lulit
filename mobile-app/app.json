@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Lulit",
+    "slug": "lulit-mobile-app",
+    "scheme": "lulit",
+    "version": "0.0.1",
+    "icon": "./assets/lulit-logo.png",
+    "android": {
+      "package": "com.lulit.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/lulit-logo.png",
+        "backgroundColor": "#0f1f43"
+      }
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}
