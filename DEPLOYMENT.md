@@ -85,6 +85,16 @@ Set production env vars from `frontend/.env.production.example`.
 
 For Vercel, import the GitHub repo, set the project root to `frontend`, use the default Vite build, and set the variables from `frontend/.env.production.example`.
 
+This repo now includes `frontend/vercel.json` so React Router routes like `/feed`, `/profile/lalit`, and `/dao` resolve to `index.html` correctly on refresh.
+
+Website-only launch checklist:
+
+1. create a frontend project from `frontend/`
+2. set `VITE_API_BASE_URL` to your hosted backend URL, for example `https://api.yourdomain.com/api/v1`
+3. deploy the backend first so login, feed, and DAO API calls have a public target
+4. after the first frontend deploy, set backend `CORS_ORIGIN` and `OAUTH2_SUCCESS_REDIRECT_URI` to the final website URL
+5. redeploy the backend so cookies and OAuth callbacks match the public site
+
 ## Mobile App Deployment
 
 To make the mobile app accessible without your laptop:

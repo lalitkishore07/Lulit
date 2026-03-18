@@ -1,5 +1,6 @@
 import { BrowserProvider } from "ethers";
 import api from "./api";
+import { getApiBaseUrl } from "./runtimeConfig";
 
 export const DAO_PROPOSAL_TYPE = {
   FEATURE_UPDATE: "FEATURE_UPDATE",
@@ -89,7 +90,7 @@ export async function castVoteSigned(proposalId, wallet, choice) {
 }
 
 export function subscribeToDaoEvents(onEvent, accessToken) {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
+  const apiBase = getApiBaseUrl();
   const wsBase = apiBase.replace("http://", "ws://").replace("https://", "wss://").replace(/\/api\/v1$/, "");
   const tokenParam = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
   const socket = new WebSocket(`${wsBase}/ws/dao${tokenParam}`);

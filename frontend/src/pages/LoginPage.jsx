@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useState } from "react";
 import BrandLogo from "../components/BrandLogo";
+import { getBackendOrigin } from "../services/runtimeConfig";
 
 const schema = Yup.object({
   username: Yup.string().required("Username is required"),
@@ -15,8 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1";
-  const backendOrigin = apiBaseUrl.replace(/\/api\/v1\/?$/, "");
+  const backendOrigin = getBackendOrigin();
 
   const startOAuthLogin = (provider) => {
     window.location.href = `${backendOrigin}/oauth2/authorization/${provider}`;
