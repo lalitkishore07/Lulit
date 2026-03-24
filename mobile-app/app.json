@@ -11,13 +11,20 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/lulit-logo.png",
         "backgroundColor": "#0f1f43"
-      }
+      },
+      "versionCode": 4
     },
     "ios": {
       "bundleIdentifier": "com.lulit.mobile"
     },
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "49431630-bd45-48c9-97f0-39df24a0d0d1"
+      }
+    },
+    "owner": "lalitkishore07"
   }
 }
