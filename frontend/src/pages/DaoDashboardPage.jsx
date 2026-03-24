@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import api from "../services/api";
-import { connectWallet, fetchWalletGovernanceStats, subscribeToDaoEvents, verifyWalletSession } from "../services/daoChain";
+import { subscribeToDaoEvents } from "../services/daoChain";
+import { useDaoWallet } from "../hooks/useDaoWallet";
 
 const STATUS_CLASS = {
   PENDING: "bg-slate-500/20 text-slate-200",
@@ -18,8 +19,7 @@ function votePercent(forVotes, againstVotes, abstainVotes) {
 }
 
 export default function DaoDashboardPage() {
-  const [wallet, setWallet] = useState("");
-  const [stats, setStats] = useState(null);
+  const { wallet, stats, hydrating, connect } = useDaoWallet();
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -47,13 +47,10 @@ export default function DaoDashboardPage() {
     return () => unsubscribe();
   }, []);
 
-  const connect = async () => {
+  const handleConnect = async () => {
     try {
       setError("");
-      const address = await connectWallet();
-      await verifyWalletSession(address);
-      setWallet(address);
-      setStats(await fetchWalletGovernanceStats(address));
+      await connect();
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Wallet authentication failed");
     }
@@ -74,10 +71,10 @@ export default function DaoDashboardPage() {
             <div className="flex gap-2">
               <button
                 className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
-                onClick={connect}
+                onClick={handleConnect}
                 type="button"
               >
-                {wallet ? "Wallet Verified" : "Connect Wallet"}
+                {wallet ? "Wallet Connected" : hydrating ? "Checking Wallet..." : "Connect Wallet"}
               </button>
               <Link className="rounded-xl border border-cyan-300/30 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/20" to="/dao/create">
                 Create Proposal

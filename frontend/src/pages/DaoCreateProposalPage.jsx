@@ -3,7 +3,8 @@ import { useState } from "react";
 import * as Yup from "yup";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
-import { DAO_PROPOSAL_TYPE, DAO_VOTING_STRATEGY, connectWallet, createProposalSigned, verifyWalletSession } from "../services/daoChain";
+import { DAO_PROPOSAL_TYPE, DAO_VOTING_STRATEGY, createProposalSigned } from "../services/daoChain";
+import { useDaoWallet } from "../hooks/useDaoWallet";
 
 const schema = Yup.object({
   title: Yup.string().min(5).max(140).required("Title required"),
@@ -17,16 +18,14 @@ const schema = Yup.object({
 
 export default function DaoCreateProposalPage() {
   const navigate = useNavigate();
-  const [wallet, setWallet] = useState("");
+  const { wallet, hydrating, connect } = useDaoWallet();
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
-  const connect = async () => {
+  const handleConnect = async () => {
     setError("");
     try {
-      const address = await connectWallet();
-      await verifyWalletSession(address);
-      setWallet(address);
+      await connect();
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Wallet verification failed");
     }
@@ -39,8 +38,8 @@ export default function DaoCreateProposalPage() {
         <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 text-white shadow-xl backdrop-blur">
           <div className="mb-4 flex items-center justify-between gap-2">
             <p className="text-sm text-slate-300">Proposal creation is off-chain and signed with wallet message only.</p>
-            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connect} type="button">
-              {wallet ? "Wallet Verified" : "Connect Wallet"}
+            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={handleConnect} type="button">
+              {wallet ? "Wallet Connected" : hydrating ? "Checking Wallet..." : "Connect Wallet"}
             </button>
           </div>
           {wallet ? <p className="mb-4 text-xs text-slate-400">Wallet: {wallet}</p> : null}
@@ -61,14 +60,15 @@ export default function DaoCreateProposalPage() {
               setStatus("");
               setError("");
               try {
-                if (!wallet) {
-                  throw new Error("Connect wallet first");
+                let activeWallet = wallet;
+                if (!activeWallet) {
+                  activeWallet = await connect();
                 }
 
                 const created = await createProposalSigned({
                   title: values.title,
                   description: values.description,
-                  wallet,
+                  wallet: activeWallet,
                   proposalType: values.proposalType,
                   votingStrategy: values.votingStrategy,
                   startTimeEpochSecond: Number(values.startTimeEpochSecond),

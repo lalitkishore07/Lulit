@@ -2,6 +2,8 @@ import { BrowserProvider } from "ethers";
 import api from "./api";
 import { getApiBaseUrl } from "./runtimeConfig";
 
+const DAO_WALLET_STORAGE_KEY = "lulit_dao_wallet";
+
 export const DAO_PROPOSAL_TYPE = {
   FEATURE_UPDATE: "FEATURE_UPDATE",
   CONTENT_MODERATION: "CONTENT_MODERATION",
@@ -27,6 +29,24 @@ async function getProvider() {
   return new BrowserProvider(window.ethereum);
 }
 
+function persistWallet(wallet) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (wallet) {
+    window.localStorage.setItem(DAO_WALLET_STORAGE_KEY, wallet);
+    return;
+  }
+  window.localStorage.removeItem(DAO_WALLET_STORAGE_KEY);
+}
+
+export function getStoredDaoWallet() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(DAO_WALLET_STORAGE_KEY) || "";
+}
+
 async function signDaoMessage(message) {
   const provider = await getProvider();
   const signer = await provider.getSigner();
@@ -36,7 +56,9 @@ async function signDaoMessage(message) {
 export async function connectWallet() {
   const provider = await getProvider();
   const accounts = await provider.send("eth_requestAccounts", []);
-  return accounts?.[0] || "";
+  const wallet = accounts?.[0] || "";
+  persistWallet(wallet);
+  return wallet;
 }
 
 export async function verifyWalletSession(wallet) {
@@ -51,6 +73,28 @@ export async function verifyWalletSession(wallet) {
     signature
   });
   return data;
+}
+
+export async function connectAndVerifyWallet() {
+  const wallet = await connectWallet();
+  await verifyWalletSession(wallet);
+  persistWallet(wallet);
+  return wallet;
+}
+
+export async function loadPersistedWallet() {
+  const storedWallet = getStoredDaoWallet();
+
+  if (!storedWallet || !window.ethereum) {
+    return storedWallet;
+  }
+
+  const provider = await getProvider();
+  const accounts = await provider.send("eth_accounts", []);
+  const matchedWallet = accounts.find((account) => account.toLowerCase() === storedWallet.toLowerCase()) || "";
+
+  persistWallet(matchedWallet);
+  return matchedWallet;
 }
 
 export async function fetchWalletGovernanceStats(wallet) {

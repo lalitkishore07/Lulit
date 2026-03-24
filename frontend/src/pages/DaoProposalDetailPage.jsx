@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import api from "../services/api";
-import { castVoteSigned, connectWallet, fetchWalletGovernanceStats, subscribeToDaoEvents, verifyWalletSession } from "../services/daoChain";
+import { castVoteSigned, subscribeToDaoEvents } from "../services/daoChain";
+import { useDaoWallet } from "../hooks/useDaoWallet";
 
 export default function DaoProposalDetailPage() {
   const { id } = useParams();
   const [proposal, setProposal] = useState(null);
   const [results, setResults] = useState(null);
-  const [wallet, setWallet] = useState("");
-  const [walletStats, setWalletStats] = useState(null);
+  const { wallet, stats: walletStats, hydrating, connect } = useDaoWallet();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
@@ -40,12 +40,9 @@ export default function DaoProposalDetailPage() {
     };
   }, [id]);
 
-  const connect = async () => {
+  const handleConnect = async () => {
     try {
-      const address = await connectWallet();
-      await verifyWalletSession(address);
-      setWallet(address);
-      setWalletStats(await fetchWalletGovernanceStats(address));
+      await connect();
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Wallet connection failed");
     }
@@ -55,10 +52,11 @@ export default function DaoProposalDetailPage() {
     setError("");
     setStatus("");
     try {
-      if (!wallet) {
-        throw new Error("Connect wallet first");
+      let activeWallet = wallet;
+      if (!activeWallet) {
+        activeWallet = await connect();
       }
-      await castVoteSigned(Number(id), wallet, choice);
+      await castVoteSigned(Number(id), activeWallet, choice);
       setStatus("Vote submitted successfully");
       await load();
     } catch (e) {
@@ -84,8 +82,8 @@ export default function DaoProposalDetailPage() {
         <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 text-white shadow-xl backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-slate-300">Status: <span className="font-semibold text-white">{proposal?.state}</span></p>
-            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connect} type="button">
-              {wallet ? "Wallet Verified" : "Connect Wallet"}
+            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={handleConnect} type="button">
+              {wallet ? "Wallet Connected" : hydrating ? "Checking Wallet..." : "Connect Wallet"}
             </button>
           </div>
 
