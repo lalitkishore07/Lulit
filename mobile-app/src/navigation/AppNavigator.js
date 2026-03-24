@@ -10,6 +10,7 @@ import DaoProposalDetailScreen from "../screens/DaoProposalDetailScreen";
 import DashboardScreen from "../screens/DashboardScreen";
 import FeedScreen from "../screens/FeedScreen";
 import LoginScreen from "../screens/LoginScreen";
+import MessagesScreen from "../screens/MessagesScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import SettingsScreen from "../screens/SettingsScreen";
 import SignupScreen from "../screens/SignupScreen";
@@ -57,6 +58,11 @@ function MainTabs() {
         name="CreatePost"
         component={CreatePostScreen}
         options={{ title: "Create", tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Create" /> }}
+      />
+      <Tabs.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{ tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Messages" /> }}
       />
       <Tabs.Screen
         name="DaoDashboard"

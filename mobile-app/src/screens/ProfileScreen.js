@@ -70,6 +70,9 @@ export default function ProfileScreen({ navigation }) {
         </SurfaceCard>
       )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable style={styles.messageBtn} onPress={() => navigation.navigate("Messages")}>
+        <Text style={styles.messageText}>Open Secure Messages</Text>
+      </Pressable>
       <Pressable style={styles.settingsBtn} onPress={() => navigation.navigate("Settings")}>
         <Text style={styles.settingsText}>Open Settings</Text>
       </Pressable>
@@ -146,6 +149,17 @@ const styles = StyleSheet.create({
   error: {
     color: palette.coral,
     fontWeight: "700"
+  },
+  messageBtn: {
+    backgroundColor: palette.navy,
+    borderRadius: 18,
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  messageText: {
+    color: "#fff",
+    fontWeight: "800"
   },
   settingsBtn: {
     backgroundColor: "#f7faff",
