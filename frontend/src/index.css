@@ -94,6 +94,14 @@ body {
   background: var(--nav-bg-hover);
 }
 
+.nav-pill-active {
+  background: linear-gradient(135deg, rgba(103, 232, 249, 0.22), rgba(52, 211, 153, 0.22));
+  color: var(--text-strong);
+  box-shadow:
+    inset 0 0 0 1px rgba(103, 232, 249, 0.35),
+    0 10px 24px rgba(52, 211, 153, 0.12);
+}
+
 .theme-picker {
   @apply inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-xs sm:text-sm;
   border-color: var(--chip-border);
