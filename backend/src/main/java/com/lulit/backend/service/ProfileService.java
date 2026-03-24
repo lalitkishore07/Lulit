@@ -55,6 +55,15 @@ public class ProfileService {
         return buildProfile(actor, target);
     }
 
+    @Transactional(readOnly = true)
+    public ProfileResponseDto profileByWallet(String actorUsername, String walletAddress) {
+        User actor = userRepository.findByUsername(actorUsername)
+                .orElseThrow(() -> new ApiException("Authenticated user not found"));
+        User target = userRepository.findByWalletAddressIgnoreCase(walletAddress)
+                .orElseThrow(() -> new ApiException("Wallet profile not found"));
+        return buildProfile(actor, target);
+    }
+
     @Transactional
     public ProfileResponseDto updateMyProfile(String username, ProfileUpdateRequestDto requestDto) {
         User user = userRepository.findByUsername(username)

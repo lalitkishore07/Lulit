@@ -10,6 +10,12 @@ function persistSession(walletAddress, token) {
   setMessagingAuthToken(token);
 }
 
+export function clearMessagingSession() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(WALLET_STORAGE_KEY);
+  setMessagingAuthToken(null);
+}
+
 export function restoreMessagingSession() {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
   const walletAddress = localStorage.getItem(WALLET_STORAGE_KEY) || "";

@@ -5,12 +5,40 @@ import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
 import { claimRecipientPrekey, fetchEncryptedMessage, fetchInbox, getMessagingIdentity, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
 import { buildIdentityRegistrationPayload, createEncryptedEnvelope, decryptEnvelope, MESSAGING_SECURITY_MODE } from "../services/messagingCrypto";
-import { restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
+import api from "../services/api";
+import { clearMessagingSession, restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
 
 const schema = Yup.object({
-  recipientWallet: Yup.string().length(42, "Ethereum wallet must be 42 characters").required("Recipient wallet is required"),
+  recipient: Yup.string().min(3, "Enter a username or wallet").required("Recipient is required"),
   plaintext: Yup.string().min(1).max(4000).required("Message required")
 });
+
+const walletPattern = /^0x[a-fA-F0-9]{40}$/;
+
+function normalizeRecipientInput(value) {
+  return String(value || "").trim().replace(/^@/, "");
+}
+
+async function resolveRecipientProfile(value) {
+  const normalized = normalizeRecipientInput(value);
+  if (!normalized) {
+    throw new Error("Recipient is required");
+  }
+
+  if (walletPattern.test(normalized)) {
+    const { data } = await api.get(`/profile/wallet/${normalized}`);
+    if (!data?.walletAddress) {
+      throw new Error("This wallet is not connected to a Lulit profile yet");
+    }
+    return data;
+  }
+
+  const { data } = await api.get(`/profile/${normalized}`);
+  if (!data?.walletAddress) {
+    throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+  }
+  return data;
+}
 
 export default function MessagesPage() {
   const { user } = useAuth();
@@ -21,6 +49,7 @@ export default function MessagesPage() {
   const [inbox, setInbox] = useState([]);
   const [selectedMessage, setSelectedMessage] = useState("");
   const [selectedMode, setSelectedMode] = useState("");
+  const [recipientPreview, setRecipientPreview] = useState(null);
 
   useEffect(() => {
     if (!selectedMode) {
@@ -35,8 +64,45 @@ export default function MessagesPage() {
 
   const loadInbox = async () => {
     try {
-      setInbox(await fetchInbox());
+      const nextInbox = await fetchInbox();
+      const senderWallets = [...new Set(
+        nextInbox
+          .filter((item) => item.securityMode !== MESSAGING_SECURITY_MODE.PRIVATE && item.senderWallet)
+          .map((item) => item.senderWallet.toLowerCase())
+      )];
+
+      const lookupEntries = await Promise.all(
+        senderWallets.map(async (senderWallet) => {
+          try {
+            const { data } = await api.get(`/profile/wallet/${senderWallet}`);
+            return [senderWallet, data];
+          } catch {
+            return [senderWallet, null];
+          }
+        })
+      );
+
+      const profileMap = new Map(lookupEntries);
+      setInbox(nextInbox.map((item) => {
+        if (item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+          return item;
+        }
+        const senderProfile = profileMap.get(item.senderWallet?.toLowerCase());
+        return {
+          ...item,
+          senderLabel: senderProfile?.username ? `@${senderProfile.username}` : item.senderLabel || item.senderWallet,
+          senderDisplayName: senderProfile?.displayName || ""
+        };
+      }));
     } catch (nextError) {
+      if ([401, 403].includes(nextError?.response?.status)) {
+        clearMessagingSession();
+        setMessageTokenReady(false);
+        setWalletAddress("");
+        setInbox([]);
+        setError("Secure messaging session expired. Connect MetaMask again to load your inbox.");
+        return;
+      }
       setError(nextError?.response?.data?.message || "Failed to load encrypted inbox");
     }
   };
@@ -92,7 +158,7 @@ export default function MessagesPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-slate-300">Hybrid E2EE using libsodium one-time prekeys, plus Kyber wrapping for quantum-resistant readiness.</p>
-                <p className="mt-2 text-xs text-slate-400">Identity is your wallet address. Plaintext never leaves the browser.</p>
+                <p className="mt-2 text-xs text-slate-400">People can message by username, while encryption still resolves to their connected wallet behind the scenes.</p>
               </div>
               <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connectWallet} type="button">
                 {messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}
@@ -102,7 +168,7 @@ export default function MessagesPage() {
             {user ? <p className="mt-1 text-xs text-slate-500">App user: @{user.username}</p> : null}
 
             <Formik
-              initialValues={{ recipientWallet: "", plaintext: "", securityMode: MESSAGING_SECURITY_MODE.STANDARD }}
+              initialValues={{ recipient: "", plaintext: "", securityMode: MESSAGING_SECURITY_MODE.STANDARD }}
               validationSchema={schema}
               onSubmit={async (values, { resetForm, setSubmitting }) => {
                 setError("");
@@ -115,18 +181,21 @@ export default function MessagesPage() {
                     await walletLoginForMessaging();
                   }
 
-                  await getMessagingIdentity(values.recipientWallet);
-                  const recipientPrekey = await claimRecipientPrekey(values.recipientWallet);
+                  const recipientProfile = await resolveRecipientProfile(values.recipient);
+                  const recipientWallet = recipientProfile.walletAddress.toLowerCase();
+                  setRecipientPreview(recipientProfile);
+                  await getMessagingIdentity(recipientWallet);
+                  const recipientPrekey = await claimRecipientPrekey(recipientWallet);
                   const { envelope, envelopeDigest } = await createEncryptedEnvelope({
                     plaintext: values.plaintext,
                     senderWallet: walletAddress,
-                    recipientWallet: values.recipientWallet,
+                    recipientWallet,
                     recipientPrekey,
                     securityMode: values.securityMode
                   });
 
                   await sendEncryptedMessage({
-                    recipientWallet: values.recipientWallet,
+                    recipientWallet,
                     envelope,
                     envelopeDigest,
                     prekeyId: recipientPrekey.id,
@@ -137,8 +206,8 @@ export default function MessagesPage() {
                   });
 
                   setStatus(values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE
-                    ? "Private message locked, uploaded to IPFS, and routed with reduced inbox metadata"
-                    : "Encrypted message uploaded to IPFS and delivered as a CID reference");
+                    ? `Private message locked for @${recipientProfile.username}, uploaded to IPFS, and routed with reduced inbox metadata`
+                    : `Encrypted message sent securely to @${recipientProfile.username}`);
                   resetForm();
                   await loadInbox();
                 } catch (nextError) {
@@ -151,10 +220,16 @@ export default function MessagesPage() {
               {({ values, errors, touched, handleChange, handleSubmit, isSubmitting }) => (
                 <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
                   <div className="grid gap-1">
-                    <label className="text-sm font-semibold">Recipient Wallet</label>
-                    <input className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2" name="recipientWallet" onChange={handleChange} value={values.recipientWallet} />
-                    {touched.recipientWallet && errors.recipientWallet ? <p className="text-xs text-rose-300">{errors.recipientWallet}</p> : null}
+                    <label className="text-sm font-semibold">Recipient</label>
+                    <input className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2" name="recipient" onChange={handleChange} placeholder="@username" value={values.recipient} />
+                    <p className="text-xs text-slate-400">Use a Lulit username like Instagram. The wallet stays underneath the security layer.</p>
+                    {touched.recipient && errors.recipient ? <p className="text-xs text-rose-300">{errors.recipient}</p> : null}
                   </div>
+                  {recipientPreview?.username ? (
+                    <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
+                      Last resolved recipient: @{recipientPreview.username} {recipientPreview.displayName ? `(${recipientPreview.displayName})` : ""} {recipientPreview.walletAddress ? `- ${recipientPreview.walletAddress}` : ""}
+                    </div>
+                  ) : null}
                   <div className="grid gap-1">
                     <label className="text-sm font-semibold">Plaintext Message</label>
                     <textarea className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2" name="plaintext" onChange={handleChange} rows={7} value={values.plaintext} />
@@ -195,7 +270,8 @@ export default function MessagesPage() {
               {inbox.map((item) => (
                 <article className="rounded-xl border border-slate-200 bg-white p-3" key={item.id}>
                   <p className="text-xs uppercase tracking-wide text-slate-500">From</p>
-                  <p className="font-mono text-sm text-slate-900">{item.senderLabel || item.senderWallet}</p>
+                  <p className="text-sm font-semibold text-slate-900">{item.senderLabel || item.senderWallet}</p>
+                  {item.senderDisplayName ? <p className="text-xs text-slate-500">{item.senderDisplayName}</p> : null}
                   <p className="mt-1 text-xs font-semibold text-slate-500">{item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Private Mode" : "Standard Secure"}</p>
                   <p className="mt-2 text-xs text-slate-500">CID: {item.cid}</p>
                   <button className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800" onClick={() => handleDecrypt(item)} type="button">

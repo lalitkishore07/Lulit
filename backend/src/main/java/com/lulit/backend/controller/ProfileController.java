@@ -53,6 +53,11 @@ public class ProfileController {
         return ResponseEntity.ok(profileService.uploadCover(authentication.getName(), file));
     }
 
+    @GetMapping("/wallet/{walletAddress}")
+    public ResponseEntity<ProfileResponseDto> byWallet(@PathVariable String walletAddress, Authentication authentication) {
+        return ResponseEntity.ok(profileService.profileByWallet(authentication.getName(), walletAddress));
+    }
+
     @GetMapping("/{username}")
     public ResponseEntity<ProfileResponseDto> byUsername(@PathVariable String username, Authentication authentication) {
         return ResponseEntity.ok(profileService.profileByUsername(authentication.getName(), username));
