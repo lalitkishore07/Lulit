@@ -10,9 +10,12 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@dashlane/pqc-kem-kyber768-browser": "^1.0.0",
+    "@dashlane/pqc-sign-dilithium5-browser": "^1.0.0",
     "axios": "^1.8.4",
     "ethers": "^6.13.5",
     "formik": "^2.4.6",
+    "libsodium-wrappers-sumo": "^0.8.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.0",

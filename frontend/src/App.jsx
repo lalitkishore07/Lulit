@@ -8,6 +8,7 @@ import ProfilePage from "./pages/ProfilePage";
 import DaoDashboardPage from "./pages/DaoDashboardPage";
 import DaoCreateProposalPage from "./pages/DaoCreateProposalPage";
 import DaoProposalDetailPage from "./pages/DaoProposalDetailPage";
+import MessagesPage from "./pages/MessagesPage";
 import SettingsPage from "./pages/SettingsPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import { useAuth } from "./hooks/useAuth";
@@ -85,6 +86,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DaoProposalDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/messages"
+        element={
+          <ProtectedRoute>
+            <MessagesPage />
           </ProtectedRoute>
         }
       />

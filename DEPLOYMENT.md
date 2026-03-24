@@ -5,15 +5,17 @@ This repo is currently optimized for local development. To make it reachable by 
 1. `frontend/` as a static web app on a frontend host
 2. `backend/` as a long-running API service
 3. `ai-service/` as a long-running API service
-4. a managed PostgreSQL database instead of local H2
-5. deployed DAO contracts on a public chain or testnet
-6. `mobile-app/` built and distributed as an installable app
+4. `messaging-service/` as a Node/Express secure messaging service
+5. a managed PostgreSQL database instead of local H2
+6. deployed DAO contracts on a public chain or testnet
+7. `mobile-app/` built and distributed as an installable app
 
 ## Recommended Production Shape
 
 - Web app: Vercel, Netlify, or Render Static Site
 - Backend API: Render, Railway, Fly.io, AWS App Runner, or Cloud Run
 - AI service: Render, Railway, Fly.io, AWS App Runner, or Cloud Run
+- Messaging service: Railway, Render, Fly.io, AWS App Runner, or Cloud Run
 - Database: Neon, Supabase Postgres, Render Postgres, Railway Postgres, or RDS
 - Mobile app: Expo EAS Build + Play Store / App Store distribution
 - Domains:
@@ -32,11 +34,14 @@ This repo is currently optimized for local development. To make it reachable by 
 
 - `backend/Dockerfile`
 - `ai-service/Dockerfile`
+- `messaging-service/package.json`
 - `mobile-app/eas.json`
 - `backend/.env.production.example`
 - `frontend/.env.production.example`
 - `mobile-app/.env.production.example`
 - `ai-service/.env.example`
+
+For secure messaging, set `PINATA_JWT` and `PINATA_GATEWAY_URL` on the messaging service before enabling encrypted IPFS uploads.
 
 ## Backend Deployment
 

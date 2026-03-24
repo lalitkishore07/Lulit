@@ -19,6 +19,9 @@ export default function PageHeader({ title }) {
           <Link className="nav-pill" to="/profile">
             Profile
           </Link>
+          <Link className="nav-pill" to="/messages">
+            Messages
+          </Link>
           <Link className="nav-pill" to="/dao">
             DAO
           </Link>
