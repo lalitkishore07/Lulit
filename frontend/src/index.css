@@ -140,6 +140,72 @@ body {
   color: var(--text-soft);
 }
 
+.message-spotlight {
+  @apply relative overflow-hidden rounded-[1.75rem] border border-white/15 shadow-2xl;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(56, 189, 248, 0.32), transparent 28%),
+    radial-gradient(circle at 82% 22%, rgba(192, 132, 252, 0.3), transparent 26%),
+    linear-gradient(140deg, #0f172a 0%, #13213b 48%, #0c1226 100%);
+  box-shadow:
+    0 24px 60px rgba(15, 23, 42, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.message-spotlight-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0.4));
+  pointer-events: none;
+}
+
+.message-spotlight-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(20px);
+  opacity: 0.9;
+}
+
+.message-spotlight-orb-a {
+  width: 10rem;
+  height: 10rem;
+  left: -1.5rem;
+  bottom: -1.5rem;
+  background: rgba(34, 211, 238, 0.22);
+}
+
+.message-spotlight-orb-b {
+  width: 9rem;
+  height: 9rem;
+  right: -1rem;
+  top: -1rem;
+  background: rgba(168, 85, 247, 0.24);
+}
+
+.message-spotlight-kicker {
+  @apply text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200;
+}
+
+.message-spotlight-chip {
+  @apply rounded-full px-3 py-1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.message-spotlight-action {
+  @apply rounded-xl px-4 py-3 text-sm font-semibold text-slate-950 transition;
+  background: linear-gradient(135deg, #67e8f9, #34d399);
+  box-shadow: 0 10px 24px rgba(52, 211, 153, 0.28);
+}
+
+.message-spotlight-action:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+}
+
 .settings-toggle {
   @apply relative inline-flex h-6 w-11 items-center rounded-full transition;
   background: rgba(148, 163, 184, 0.55);
