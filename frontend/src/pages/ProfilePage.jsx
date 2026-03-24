@@ -154,6 +154,11 @@ export default function ProfilePage() {
                   <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" onClick={handleShare} type="button">
                     Share
                   </button>
+                  {!isOwn ? (
+                    <Link className="rounded-lg border border-cyan-300 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-800" to={`/messages?with=${profile.username}`}>
+                      Message
+                    </Link>
+                  ) : null}
                   {isOwn ? (
                     <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" onClick={logout} type="button">
                       Logout

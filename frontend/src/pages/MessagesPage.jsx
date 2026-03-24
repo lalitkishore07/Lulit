@@ -1,22 +1,44 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Formik } from "formik";
 import * as Yup from "yup";
+import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
-import { claimRecipientPrekey, fetchEncryptedMessage, fetchInbox, getMessagingIdentity, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
+import { claimRecipientPrekey, fetchConversations, fetchEncryptedMessage, fetchThread, getMessagingIdentity, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
 import { buildIdentityRegistrationPayload, createEncryptedEnvelope, decryptEnvelope, MESSAGING_SECURITY_MODE } from "../services/messagingCrypto";
 import api from "../services/api";
 import { clearMessagingSession, restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
 
-const schema = Yup.object({
-  recipient: Yup.string().min(3, "Enter a username or wallet").required("Recipient is required"),
+const composerSchema = Yup.object({
   plaintext: Yup.string().min(1).max(4000).required("Message required")
+});
+
+const newChatSchema = Yup.object({
+  recipient: Yup.string().min(3, "Enter a username or wallet").required("Recipient is required")
 });
 
 const walletPattern = /^0x[a-fA-F0-9]{40}$/;
 
 function normalizeRecipientInput(value) {
   return String(value || "").trim().replace(/^@/, "");
+}
+
+function formatRelativeTimestamp(value) {
+  if (!value) {
+    return "";
+  }
+
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d`;
 }
 
 async function resolveRecipientProfile(value) {
@@ -42,79 +64,18 @@ async function resolveRecipientProfile(value) {
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [walletAddress, setWalletAddress] = useState("");
   const [messageTokenReady, setMessageTokenReady] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [inbox, setInbox] = useState([]);
-  const [selectedMessage, setSelectedMessage] = useState("");
-  const [selectedMode, setSelectedMode] = useState("");
-  const [recipientPreview, setRecipientPreview] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [decryptedMessages, setDecryptedMessages] = useState({});
+  const [newChatTarget, setNewChatTarget] = useState("");
 
-  useEffect(() => {
-    if (!selectedMode) {
-      return undefined;
-    }
-    if (selectedMode !== MESSAGING_SECURITY_MODE.PRIVATE) {
-      return undefined;
-    }
-    const timer = window.setTimeout(() => setSelectedMessage(""), 45000);
-    return () => window.clearTimeout(timer);
-  }, [selectedMode, selectedMessage]);
-
-  const loadInbox = async () => {
-    try {
-      const nextInbox = await fetchInbox();
-      const senderWallets = [...new Set(
-        nextInbox
-          .filter((item) => item.securityMode !== MESSAGING_SECURITY_MODE.PRIVATE && item.senderWallet)
-          .map((item) => item.senderWallet.toLowerCase())
-      )];
-
-      const lookupEntries = await Promise.all(
-        senderWallets.map(async (senderWallet) => {
-          try {
-            const { data } = await api.get(`/profile/wallet/${senderWallet}`);
-            return [senderWallet, data];
-          } catch {
-            return [senderWallet, null];
-          }
-        })
-      );
-
-      const profileMap = new Map(lookupEntries);
-      setInbox(nextInbox.map((item) => {
-        if (item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
-          return item;
-        }
-        const senderProfile = profileMap.get(item.senderWallet?.toLowerCase());
-        return {
-          ...item,
-          senderLabel: senderProfile?.username ? `@${senderProfile.username}` : item.senderLabel || item.senderWallet,
-          senderDisplayName: senderProfile?.displayName || ""
-        };
-      }));
-    } catch (nextError) {
-      if ([401, 403].includes(nextError?.response?.status)) {
-        clearMessagingSession();
-        setMessageTokenReady(false);
-        setWalletAddress("");
-        setInbox([]);
-        setError("Secure messaging session expired. Connect MetaMask again to load your inbox.");
-        return;
-      }
-      setError(nextError?.response?.data?.message || "Failed to load encrypted inbox");
-    }
-  };
-
-  useEffect(() => {
-    const restored = restoreMessagingSession();
-    if (restored.token) {
-      setMessageTokenReady(true);
-      setWalletAddress(restored.walletAddress);
-      loadInbox();
-    }
-  }, []);
+  const selectedWallet = selectedConversation?.walletAddress || "";
 
   const connectWallet = async () => {
     setError("");
@@ -125,12 +86,146 @@ export default function MessagesPage() {
       setMessageTokenReady(true);
       const identityPayload = await buildIdentityRegistrationPayload();
       await registerMessagingIdentity(identityPayload);
-      await loadInbox();
-      setStatus("Wallet-authenticated secure messaging is ready");
+      setStatus("Secure DMs are ready");
     } catch (nextError) {
       setError(nextError?.response?.data?.message || nextError.message || "Unable to authenticate messaging wallet");
     }
   };
+
+  const handleSessionFailure = (nextError) => {
+    if ([401, 403].includes(nextError?.response?.status)) {
+      clearMessagingSession();
+      setMessageTokenReady(false);
+      setWalletAddress("");
+      setConversations([]);
+      setThreadMessages([]);
+      setSelectedConversation(null);
+      setError("Secure messaging session expired. Connect MetaMask again.");
+      return true;
+    }
+    return false;
+  };
+
+  const enrichCounterparty = async (wallet) => {
+    try {
+      const { data } = await api.get(`/profile/wallet/${wallet}`);
+      return {
+        walletAddress: wallet,
+        username: data.username,
+        displayName: data.displayName || "",
+        avatarUrl: data.avatarUrl || ""
+      };
+    } catch {
+      return {
+        walletAddress: wallet,
+        username: wallet.slice(0, 8),
+        displayName: "",
+        avatarUrl: ""
+      };
+    }
+  };
+
+  const loadConversations = async (preferredWallet = "") => {
+    try {
+      const records = await fetchConversations();
+      const enriched = await Promise.all(
+        records.map(async (record) => {
+          const counterparty = await enrichCounterparty(record.counterpartyWallet);
+          return {
+            ...record,
+            ...counterparty
+          };
+        })
+      );
+      setConversations(enriched);
+
+      const pickedWallet = preferredWallet || selectedWallet || enriched[0]?.walletAddress || "";
+      if (pickedWallet) {
+        const picked = enriched.find((item) => item.walletAddress.toLowerCase() === pickedWallet.toLowerCase());
+        if (picked) {
+          setSelectedConversation(picked);
+        }
+      }
+    } catch (nextError) {
+      if (!handleSessionFailure(nextError)) {
+        setError(nextError?.response?.data?.message || "Failed to load encrypted inbox");
+      }
+    }
+  };
+
+  const loadThread = async (conversation) => {
+    if (!conversation?.walletAddress) {
+      setThreadMessages([]);
+      return;
+    }
+
+    try {
+      const records = await fetchThread(conversation.walletAddress);
+      setThreadMessages(records);
+    } catch (nextError) {
+      if (!handleSessionFailure(nextError)) {
+        setError(nextError?.response?.data?.message || "Unable to open this conversation");
+      }
+    }
+  };
+
+  useEffect(() => {
+    const restored = restoreMessagingSession();
+    if (restored.token) {
+      setMessageTokenReady(true);
+      setWalletAddress(restored.walletAddress);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!messageTokenReady) {
+      return;
+    }
+    loadConversations();
+  }, [messageTokenReady]);
+
+  useEffect(() => {
+    if (!selectedConversation) {
+      return;
+    }
+    setSearchParams({ with: selectedConversation.username });
+    loadThread(selectedConversation);
+  }, [selectedConversation]);
+
+  useEffect(() => {
+    const withUsername = searchParams.get("with");
+    if (!withUsername || !messageTokenReady) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const profile = await resolveRecipientProfile(withUsername);
+        const conversation = {
+          walletAddress: profile.walletAddress.toLowerCase(),
+          username: profile.username,
+          displayName: profile.displayName || "",
+          avatarUrl: profile.avatarUrl || "",
+          previewLabel: "Start a secure conversation",
+          messageCount: 0,
+          lastMessageAt: null,
+          lastDirection: "OUTGOING",
+          securityMode: MESSAGING_SECURITY_MODE.STANDARD
+        };
+        setSelectedConversation((current) => (current?.walletAddress === conversation.walletAddress ? current : conversation));
+      } catch {
+        // Ignore bad querystring values and let the rest of the screen keep working.
+      }
+    })();
+  }, [searchParams, messageTokenReady]);
+
+  const orderedThread = useMemo(
+    () => threadMessages.map((item) => ({
+      ...item,
+      plaintext: decryptedMessages[item.cid] || ""
+    })),
+    [threadMessages, decryptedMessages]
+  );
 
   const handleDecrypt = async (item) => {
     setError("");
@@ -140,8 +235,21 @@ export default function MessagesPage() {
       }
       const { envelope } = await fetchEncryptedMessage(item.cid);
       const plaintext = await decryptEnvelope(envelope);
-      setSelectedMessage(plaintext);
-      setSelectedMode(item.securityMode || MESSAGING_SECURITY_MODE.STANDARD);
+      setDecryptedMessages((current) => ({
+        ...current,
+        [item.cid]: plaintext
+      }));
+
+      if (item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+        window.setTimeout(() => {
+          setDecryptedMessages((current) => {
+            const next = { ...current };
+            delete next[item.cid];
+            return next;
+          });
+        }, 45000);
+      }
+
       const identityPayload = await buildIdentityRegistrationPayload();
       await registerMessagingIdentity(identityPayload);
     } catch (nextError) {
@@ -149,148 +257,271 @@ export default function MessagesPage() {
     }
   };
 
+  const startConversation = async (recipientValue) => {
+    const profile = await resolveRecipientProfile(recipientValue);
+    const conversation = {
+      walletAddress: profile.walletAddress.toLowerCase(),
+      username: profile.username,
+      displayName: profile.displayName || "",
+      avatarUrl: profile.avatarUrl || "",
+      previewLabel: "Start a secure conversation",
+      messageCount: 0,
+      lastMessageAt: null,
+      lastDirection: "OUTGOING",
+      securityMode: MESSAGING_SECURITY_MODE.STANDARD
+    };
+    setSelectedConversation(conversation);
+    setNewChatTarget("");
+    setStatus(`Chat opened with @${profile.username}`);
+    return conversation;
+  };
+
   return (
     <main className="page-shell">
-      <section className="mx-auto max-w-5xl">
-        <PageHeader title="Secure Messages" />
-        <div className="grid gap-5 lg:grid-cols-[1.1fr,0.9fr]">
-          <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 text-white shadow-xl backdrop-blur">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm text-slate-300">Hybrid E2EE using libsodium one-time prekeys, plus Kyber wrapping for quantum-resistant readiness.</p>
-                <p className="mt-2 text-xs text-slate-400">People can message by username, while encryption still resolves to their connected wallet behind the scenes.</p>
-              </div>
-              <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connectWallet} type="button">
-                {messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}
-              </button>
+      <section className="mx-auto max-w-6xl">
+        <PageHeader title="Messages" />
+
+        <div className="mb-5 rounded-[1.75rem] border border-white/10 bg-slate-900/75 p-5 text-white shadow-2xl backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-slate-300">Secure DMs with username-style conversations on top and wallet-based encryption underneath.</p>
+              <p className="mt-2 text-xs text-slate-400">No raw wallet entry is needed for normal use. Just open a chat with a username and keep MetaMask connected for encryption.</p>
             </div>
-            {walletAddress ? <p className="mt-3 text-xs text-slate-400">Messaging wallet: {walletAddress}</p> : null}
-            {user ? <p className="mt-1 text-xs text-slate-500">App user: @{user.username}</p> : null}
+            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connectWallet} type="button">
+              {messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}
+            </button>
+          </div>
+          {walletAddress ? <p className="mt-3 text-xs text-slate-400">Messaging wallet: {walletAddress}</p> : null}
+          {user ? <p className="mt-1 text-xs text-slate-500">Logged in as @{user.username}</p> : null}
+        </div>
 
-            <Formik
-              initialValues={{ recipient: "", plaintext: "", securityMode: MESSAGING_SECURITY_MODE.STANDARD }}
-              validationSchema={schema}
-              onSubmit={async (values, { resetForm, setSubmitting }) => {
-                setError("");
-                setStatus("");
-                try {
-                  if (!messageTokenReady || !walletAddress) {
-                    throw new Error("Connect MetaMask first");
-                  }
-                  if (values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
-                    await walletLoginForMessaging();
-                  }
-
-                  const recipientProfile = await resolveRecipientProfile(values.recipient);
-                  const recipientWallet = recipientProfile.walletAddress.toLowerCase();
-                  setRecipientPreview(recipientProfile);
-                  await getMessagingIdentity(recipientWallet);
-                  const recipientPrekey = await claimRecipientPrekey(recipientWallet);
-                  const { envelope, envelopeDigest } = await createEncryptedEnvelope({
-                    plaintext: values.plaintext,
-                    senderWallet: walletAddress,
-                    recipientWallet,
-                    recipientPrekey,
-                    securityMode: values.securityMode
-                  });
-
-                  await sendEncryptedMessage({
-                    recipientWallet,
-                    envelope,
-                    envelopeDigest,
-                    prekeyId: recipientPrekey.id,
-                    securityMode: values.securityMode,
-                    signatureBundle: {
-                      walletAddress
+        <div className="grid gap-5 xl:grid-cols-[340px,1fr]">
+          <aside className="rounded-[1.75rem] border border-slate-200/70 bg-white/80 p-4 shadow-xl backdrop-blur">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">New Chat</p>
+              <Formik
+                initialValues={{ recipient: newChatTarget }}
+                enableReinitialize
+                validationSchema={newChatSchema}
+                onSubmit={async (values, { setSubmitting }) => {
+                  setError("");
+                  setStatus("");
+                  try {
+                    if (!messageTokenReady) {
+                      throw new Error("Connect MetaMask first");
                     }
-                  });
+                    await startConversation(values.recipient);
+                  } catch (nextError) {
+                    setError(nextError?.response?.data?.message || nextError.message || "Unable to start secure chat");
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
+              >
+                {({ values, errors, touched, handleChange, handleSubmit, isSubmitting }) => (
+                  <form className="mt-3 grid gap-2" onSubmit={handleSubmit}>
+                    <input
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      name="recipient"
+                      onChange={(event) => {
+                        setNewChatTarget(event.target.value);
+                        handleChange(event);
+                      }}
+                      placeholder="@username"
+                      value={values.recipient}
+                    />
+                    {touched.recipient && errors.recipient ? <p className="text-xs text-rose-600">{errors.recipient}</p> : null}
+                    <button className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800" disabled={isSubmitting} type="submit">
+                      Open Chat
+                    </button>
+                  </form>
+                )}
+              </Formik>
+            </div>
 
-                  setStatus(values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE
-                    ? `Private message locked for @${recipientProfile.username}, uploaded to IPFS, and routed with reduced inbox metadata`
-                    : `Encrypted message sent securely to @${recipientProfile.username}`);
-                  resetForm();
-                  await loadInbox();
-                } catch (nextError) {
-                  setError(nextError?.response?.data?.message || nextError.message || "Unable to send encrypted message");
-                } finally {
-                  setSubmitting(false);
-                }
-              }}
-            >
-              {({ values, errors, touched, handleChange, handleSubmit, isSubmitting }) => (
-                <form className="mt-5 grid gap-4" onSubmit={handleSubmit}>
-                  <div className="grid gap-1">
-                    <label className="text-sm font-semibold">Recipient</label>
-                    <input className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2" name="recipient" onChange={handleChange} placeholder="@username" value={values.recipient} />
-                    <p className="text-xs text-slate-400">Use a Lulit username like Instagram. The wallet stays underneath the security layer.</p>
-                    {touched.recipient && errors.recipient ? <p className="text-xs text-rose-300">{errors.recipient}</p> : null}
-                  </div>
-                  {recipientPreview?.username ? (
-                    <div className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
-                      Last resolved recipient: @{recipientPreview.username} {recipientPreview.displayName ? `(${recipientPreview.displayName})` : ""} {recipientPreview.walletAddress ? `- ${recipientPreview.walletAddress}` : ""}
-                    </div>
-                  ) : null}
-                  <div className="grid gap-1">
-                    <label className="text-sm font-semibold">Plaintext Message</label>
-                    <textarea className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2" name="plaintext" onChange={handleChange} rows={7} value={values.plaintext} />
-                    {touched.plaintext && errors.plaintext ? <p className="text-xs text-rose-300">{errors.plaintext}</p> : null}
-                  </div>
-                  <div className="grid gap-2">
-                    <p className="text-sm font-semibold">Security Mode</p>
-                    <label className={`rounded-xl border px-3 py-3 ${values.securityMode === MESSAGING_SECURITY_MODE.STANDARD ? "border-cyan-400 bg-cyan-500/10" : "border-slate-600 bg-slate-800"}`}>
-                      <input checked={values.securityMode === MESSAGING_SECURITY_MODE.STANDARD} className="mr-2" name="securityMode" onChange={handleChange} type="radio" value={MESSAGING_SECURITY_MODE.STANDARD} />
-                      <span className="font-semibold">Standard Secure</span>
-                      <span className="ml-2 text-xs text-slate-300">Fast E2EE with persistent inbox metadata.</span>
-                    </label>
-                    <label className={`rounded-xl border px-3 py-3 ${values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "border-emerald-400 bg-emerald-500/10" : "border-slate-600 bg-slate-800"}`}>
-                      <input checked={values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE} className="mr-2" name="securityMode" onChange={handleChange} type="radio" value={MESSAGING_SECURITY_MODE.PRIVATE} />
-                      <span className="font-semibold">Private Mode</span>
-                      <span className="ml-2 text-xs text-slate-300">Fresh wallet auth, reduced inbox metadata, and auto-cleared plaintext after decrypt.</span>
-                    </label>
-                  </div>
-                  <button className="rounded-xl bg-emerald-500 py-2 font-semibold text-white hover:bg-emerald-400" disabled={isSubmitting} type="submit">
-                    {isSubmitting ? "Encrypting..." : "Encrypt, Upload, Send"}
-                  </button>
-                </form>
-              )}
-            </Formik>
-
-            {status ? <p className="mt-3 text-sm text-emerald-300">{status}</p> : null}
-            {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
-          </section>
-
-          <section className="rounded-2xl border border-slate-300/50 bg-white/80 p-5 shadow-lg">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-slate-900">Encrypted Inbox</h2>
-              <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-100" onClick={loadInbox} type="button">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Conversations</p>
+              <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-100" onClick={() => loadConversations()} type="button">
                 Refresh
               </button>
             </div>
-            <div className="mt-4 grid gap-3">
-              {inbox.map((item) => (
-                <article className="rounded-xl border border-slate-200 bg-white p-3" key={item.id}>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">From</p>
-                  <p className="text-sm font-semibold text-slate-900">{item.senderLabel || item.senderWallet}</p>
-                  {item.senderDisplayName ? <p className="text-xs text-slate-500">{item.senderDisplayName}</p> : null}
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Private Mode" : "Standard Secure"}</p>
-                  <p className="mt-2 text-xs text-slate-500">CID: {item.cid}</p>
-                  <button className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800" onClick={() => handleDecrypt(item)} type="button">
-                    {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Unlock Private Message" : "Decrypt On Device"}
-                  </button>
-                </article>
-              ))}
-              {!inbox.length ? <p className="text-sm text-slate-500">No encrypted messages yet.</p> : null}
-            </div>
 
-            {selectedMessage ? (
-              <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-emerald-700">Decrypted Plaintext</p>
-                {selectedMode === MESSAGING_SECURITY_MODE.PRIVATE ? <p className="mt-1 text-xs text-emerald-700">Private Mode content auto-clears after 45 seconds.</p> : null}
-                <p className="mt-2 whitespace-pre-wrap text-sm text-emerald-950">{selectedMessage}</p>
+            <div className="grid gap-2">
+              {conversations.map((item) => {
+                const isActive = selectedWallet && item.walletAddress.toLowerCase() === selectedWallet.toLowerCase();
+                return (
+                  <button
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${isActive ? "border-cyan-400 bg-cyan-50 shadow-md" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+                    key={item.walletAddress}
+                    onClick={() => setSelectedConversation(item)}
+                    type="button"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">@{item.username}</p>
+                        {item.displayName ? <p className="truncate text-xs text-slate-500">{item.displayName}</p> : null}
+                        <p className="mt-1 truncate text-xs text-slate-500">{item.previewLabel}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-400">{formatRelativeTimestamp(item.lastMessageAt)}</span>
+                    </div>
+                  </button>
+                );
+              })}
+              {!conversations.length ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  No chats yet. Start with a username and it will feel like DMs, not email.
+                </div>
+              ) : null}
+            </div>
+          </aside>
+
+          <section className="rounded-[1.75rem] border border-white/10 bg-slate-950/70 text-white shadow-2xl backdrop-blur">
+            {selectedConversation ? (
+              <>
+                <div className="border-b border-white/10 px-5 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-lg font-semibold">@{selectedConversation.username}</p>
+                      <p className="text-xs text-slate-400">
+                        {selectedConversation.displayName || "Secure conversation"} {selectedConversation.walletAddress ? `• ${selectedConversation.walletAddress}` : ""}
+                      </p>
+                    </div>
+                    <Link className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/5" to={`/profile/${selectedConversation.username}`}>
+                      Open Profile
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 px-5 py-5">
+                  {orderedThread.map((item) => {
+                    const isOutgoing = item.direction === "OUTGOING";
+                    return (
+                      <div className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`} key={item.id}>
+                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${isOutgoing ? "bg-cyan-500/20 text-cyan-50" : "bg-white/8 text-slate-100"}`}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                              {isOutgoing ? "You" : `@${selectedConversation.username}`}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{formatRelativeTimestamp(item.createdAt)}</span>
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold">
+                              {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Private" : "Secure"}
+                            </span>
+                          </div>
+                          {item.plaintext ? (
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{item.plaintext}</p>
+                          ) : (
+                            <button className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-white/8" onClick={() => handleDecrypt(item)} type="button">
+                              {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Unlock Private Message" : "Decrypt Message"}
+                            </button>
+                          )}
+                          {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE && item.plaintext ? (
+                            <p className="mt-2 text-[11px] text-emerald-200">Private message auto-clears after 45 seconds.</p>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!orderedThread.length ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-10 text-center text-sm text-slate-400">
+                      No messages in this chat yet. Send the first secure DM below.
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="border-t border-white/10 px-5 py-4">
+                  <Formik
+                    initialValues={{ plaintext: "", securityMode: MESSAGING_SECURITY_MODE.STANDARD }}
+                    validationSchema={composerSchema}
+                    onSubmit={async (values, { resetForm, setSubmitting }) => {
+                      setError("");
+                      setStatus("");
+                      try {
+                        if (!messageTokenReady || !walletAddress) {
+                          throw new Error("Connect MetaMask first");
+                        }
+                        if (values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+                          await walletLoginForMessaging();
+                        }
+
+                        const recipientWallet = selectedConversation.walletAddress.toLowerCase();
+                        await getMessagingIdentity(recipientWallet);
+                        const recipientPrekey = await claimRecipientPrekey(recipientWallet);
+                        const { envelope, envelopeDigest } = await createEncryptedEnvelope({
+                          plaintext: values.plaintext,
+                          senderWallet: walletAddress,
+                          recipientWallet,
+                          recipientPrekey,
+                          securityMode: values.securityMode
+                        });
+
+                        await sendEncryptedMessage({
+                          recipientWallet,
+                          envelope,
+                          envelopeDigest,
+                          prekeyId: recipientPrekey.id,
+                          securityMode: values.securityMode,
+                          signatureBundle: {
+                            walletAddress
+                          }
+                        });
+
+                        setStatus(values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE
+                          ? `Private DM sent to @${selectedConversation.username}`
+                          : `Secure DM sent to @${selectedConversation.username}`);
+                        resetForm();
+                        await loadConversations(selectedConversation.walletAddress);
+                        await loadThread(selectedConversation);
+                      } catch (nextError) {
+                        setError(nextError?.response?.data?.message || nextError.message || "Unable to send secure DM");
+                      } finally {
+                        setSubmitting(false);
+                      }
+                    }}
+                  >
+                    {({ values, errors, touched, handleChange, handleSubmit, isSubmitting }) => (
+                      <form className="grid gap-3" onSubmit={handleSubmit}>
+                        <textarea
+                          className="rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-white placeholder:text-slate-500"
+                          name="plaintext"
+                          onChange={handleChange}
+                          placeholder={`Message @${selectedConversation.username}`}
+                          rows={4}
+                          value={values.plaintext}
+                        />
+                        {touched.plaintext && errors.plaintext ? <p className="text-xs text-rose-300">{errors.plaintext}</p> : null}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex flex-wrap gap-2">
+                            <label className={`rounded-full border px-3 py-2 text-xs font-semibold ${values.securityMode === MESSAGING_SECURITY_MODE.STANDARD ? "border-cyan-400 bg-cyan-500/10 text-cyan-100" : "border-white/10 bg-white/5 text-slate-300"}`}>
+                              <input checked={values.securityMode === MESSAGING_SECURITY_MODE.STANDARD} className="mr-2" name="securityMode" onChange={handleChange} type="radio" value={MESSAGING_SECURITY_MODE.STANDARD} />
+                              Standard Secure
+                            </label>
+                            <label className={`rounded-full border px-3 py-2 text-xs font-semibold ${values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "border-emerald-400 bg-emerald-500/10 text-emerald-100" : "border-white/10 bg-white/5 text-slate-300"}`}>
+                              <input checked={values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE} className="mr-2" name="securityMode" onChange={handleChange} type="radio" value={MESSAGING_SECURITY_MODE.PRIVATE} />
+                              Private Mode
+                            </label>
+                          </div>
+                          <button className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-400" disabled={isSubmitting} type="submit">
+                            {isSubmitting ? "Encrypting..." : "Send DM"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </Formik>
+                </div>
+              </>
+            ) : (
+              <div className="flex min-h-[520px] items-center justify-center px-6 text-center">
+                <div>
+                  <p className="text-xl font-semibold text-white">Choose a conversation</p>
+                  <p className="mt-2 text-sm text-slate-400">Open a username-based secure DM from the left side, or start one from a profile.</p>
+                </div>
               </div>
-            ) : null}
+            )}
           </section>
         </div>
+
+        {status ? <p className="mt-4 text-sm text-emerald-700">{status}</p> : null}
+        {error ? <p className="mt-4 text-sm text-rose-700">{error}</p> : null}
       </section>
     </main>
   );

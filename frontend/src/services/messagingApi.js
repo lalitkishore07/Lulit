@@ -47,6 +47,16 @@ export async function fetchInbox() {
   return data;
 }
 
+export async function fetchConversations() {
+  const { data } = await messagingApi.get("/messages/conversations");
+  return data;
+}
+
+export async function fetchThread(walletAddress) {
+  const { data } = await messagingApi.get(`/messages/thread/${walletAddress}`);
+  return data;
+}
+
 export async function fetchEncryptedMessage(cid) {
   const { data } = await messagingApi.get(`/messages/${cid}`);
   return data;

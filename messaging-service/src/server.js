@@ -7,7 +7,7 @@ import { requireWalletAuth } from "./middleware/auth.js";
 import { issueChallenge, verifyWalletChallenge } from "./services/walletAuthService.js";
 import { claimOneTimePrekey, getIdentity, registerIdentity } from "./services/identityService.js";
 import { fetchEncryptedEnvelope, uploadEncryptedEnvelope } from "./services/web3StorageService.js";
-import { getMessageRecord, listInbox, registerMessageRecord } from "./services/messageRegistryService.js";
+import { getMessageRecord, listConversations, listInbox, listThread, registerMessageRecord } from "./services/messageRegistryService.js";
 
 const app = express();
 
@@ -121,6 +121,14 @@ app.post("/api/v1/messages/send", requireWalletAuth, async (req, res) => {
 
 app.get("/api/v1/messages/inbox", requireWalletAuth, async (req, res) => {
   return res.json(await listInbox(req.walletAddress));
+});
+
+app.get("/api/v1/messages/conversations", requireWalletAuth, async (req, res) => {
+  return res.json(await listConversations(req.walletAddress));
+});
+
+app.get("/api/v1/messages/thread/:walletAddress", requireWalletAuth, async (req, res) => {
+  return res.json(await listThread(req.walletAddress, req.params.walletAddress));
 });
 
 app.get("/api/v1/messages/:cid", requireWalletAuth, async (req, res) => {
