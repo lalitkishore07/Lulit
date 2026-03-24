@@ -20,6 +20,7 @@ export default function MessagesScreen() {
   const [recipient, setRecipient] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const normalizedRecipient = recipient.trim().replace(/^@/, "");
 
   const launchMessages = async (username) => {
     setError("");
@@ -40,20 +41,20 @@ export default function MessagesScreen() {
       scroll
       bodyStyle={styles.content}
     >
-      <SurfaceCard style={styles.hero}>
-        <Text style={styles.kicker}>Secure Messaging</Text>
-        <Text style={styles.headline}>DM people by username, not by wallet address.</Text>
+      <View style={styles.heroPanel}>
+        <Text style={styles.kicker}>Secure DMs</Text>
+        <Text style={styles.headline}>Mobile now follows the web messaging direction.</Text>
         <Text style={styles.subhead}>
-          The full encrypted messaging flow lives in the secure web app right now, so mobile opens that directly with your live account and conversation target.
+          Start with a username, keep the DM-style flow, and hand off into the live encrypted experience for the deepest security.
         </Text>
         <Pressable style={styles.primaryBtn} onPress={() => launchMessages()}>
-          <Text style={styles.primaryBtnText}>Open Secure Messages</Text>
+          <Text style={styles.primaryBtnText}>Open All Messages</Text>
         </Pressable>
-      </SurfaceCard>
+      </View>
 
       <SurfaceCard style={styles.composeCard}>
-        <Text style={styles.sectionTitle}>Start a chat</Text>
-        <Text style={styles.sectionSubtitle}>Type a Lulit username just like social DMs.</Text>
+        <Text style={styles.sectionTitle}>New chat</Text>
+        <Text style={styles.sectionSubtitle}>Type a username the way you would in social DMs.</Text>
         <TextInput
           autoCapitalize="none"
           onChangeText={setRecipient}
@@ -63,30 +64,48 @@ export default function MessagesScreen() {
           value={recipient}
         />
         <Pressable
-          style={[styles.secondaryBtn, !recipient.trim() && styles.secondaryBtnDisabled]}
+          style={[styles.secondaryBtn, !normalizedRecipient && styles.secondaryBtnDisabled]}
           onPress={() => launchMessages(recipient)}
-          disabled={!recipient.trim()}
+          disabled={!normalizedRecipient}
         >
-          <Text style={styles.secondaryBtnText}>Open Chat</Text>
+          <Text style={styles.secondaryBtnText}>Chat with @{normalizedRecipient || "username"}</Text>
         </Pressable>
       </SurfaceCard>
 
-      <View style={styles.securityGrid}>
-        <SecurityPill accent={palette.cyan} title="Standard Secure" subtitle="Faster everyday encrypted conversations." />
-        <SecurityPill accent={palette.mint} title="Private Mode" subtitle="Fresh auth and shorter-lived plaintext for sensitive chats." />
-      </View>
+      <SurfaceCard style={styles.threadPreview}>
+        <View style={styles.threadHeader}>
+          <View>
+            <Text style={styles.threadHandle}>@{normalizedRecipient || "username"}</Text>
+            <Text style={styles.threadMeta}>Secure conversation preview</Text>
+          </View>
+          <View style={styles.modeWrap}>
+            <Text style={styles.modeChip}>Private</Text>
+          </View>
+        </View>
 
-      <SurfaceCard style={styles.tipCard}>
-        <Text style={styles.sectionTitle}>What carries over from web</Text>
-        <Text style={styles.tipText}>Username-based DM threads</Text>
-        <Text style={styles.tipText}>Secure message decrypt flow</Text>
-        <Text style={styles.tipText}>Private mode for sensitive messages</Text>
-        <Text style={styles.tipText}>Live cloud backend and DAO links</Text>
+        <View style={styles.bubbleWrapLeft}>
+          <View style={styles.incomingBubble}>
+            <Text style={styles.bubbleLabel}>@{normalizedRecipient || "username"}</Text>
+            <Text style={styles.bubbleText}>Hey, can we discuss this privately?</Text>
+          </View>
+        </View>
+        <View style={styles.bubbleWrapRight}>
+          <View style={styles.outgoingBubble}>
+            <Text style={styles.bubbleLabel}>You</Text>
+            <Text style={styles.bubbleText}>Yes, opening a secure DM now.</Text>
+          </View>
+        </View>
       </SurfaceCard>
 
+      <View style={styles.securityGrid}>
+        <SecurityPill accent={palette.cyan} title="Standard Secure" subtitle="Everyday encrypted chat with faster flow." />
+        <SecurityPill accent={palette.mint} title="Private Mode" subtitle="Use it for more sensitive messages or media." />
+      </View>
+
       <SurfaceCard style={styles.accountCard}>
-        <Text style={styles.sectionTitle}>Signed in mobile account</Text>
+        <Text style={styles.sectionTitle}>Signed in</Text>
         <Text style={styles.accountHandle}>@{user?.username || "lulit"}</Text>
+        <Text style={styles.sectionSubtitle}>Your mobile app now points at the live cloud stack and opens the secure web DM flow with the same product identity.</Text>
         <Pressable style={styles.linkBtn} onPress={() => Linking.openURL("https://frontend-peach-eight-mhrkt5iw5h.vercel.app")}>
           <Text style={styles.linkBtnText}>Open Live Web App</Text>
         </Pressable>
@@ -102,8 +121,11 @@ const styles = StyleSheet.create({
   content: {
     paddingBottom: 30
   },
-  hero: {
-    backgroundColor: "rgba(17,24,39,0.94)",
+  heroPanel: {
+    backgroundColor: "#0f172a",
+    borderRadius: 28,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
     gap: 10
   },
   kicker: {
@@ -124,7 +146,7 @@ const styles = StyleSheet.create({
     lineHeight: 21
   },
   primaryBtn: {
-    marginTop: 4,
+    marginTop: 6,
     minHeight: 52,
     borderRadius: radius.md,
     alignItems: "center",
@@ -137,6 +159,71 @@ const styles = StyleSheet.create({
   },
   composeCard: {
     gap: 10
+  },
+  threadPreview: {
+    gap: 12,
+    backgroundColor: "rgba(15,23,42,0.96)"
+  },
+  threadHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  threadHandle: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  threadMeta: {
+    color: "#94a3b8",
+    marginTop: 2
+  },
+  modeWrap: {
+    alignItems: "flex-end"
+  },
+  modeChip: {
+    color: "#bbf7d0",
+    backgroundColor: "rgba(16,185,129,0.16)",
+    borderRadius: 999,
+    overflow: "hidden",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 11,
+    fontWeight: "800"
+  },
+  bubbleWrapLeft: {
+    alignItems: "flex-start"
+  },
+  bubbleWrapRight: {
+    alignItems: "flex-end"
+  },
+  incomingBubble: {
+    maxWidth: "82%",
+    borderRadius: 22,
+    borderTopLeftRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.09)"
+  },
+  outgoingBubble: {
+    maxWidth: "82%",
+    borderRadius: 22,
+    borderTopRightRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "rgba(34,211,238,0.18)"
+  },
+  bubbleLabel: {
+    color: "#cbd5e1",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.7
+  },
+  bubbleText: {
+    color: "#f8fafc",
+    marginTop: 6,
+    lineHeight: 20
   },
   sectionTitle: {
     color: palette.ink,
@@ -184,13 +271,6 @@ const styles = StyleSheet.create({
   },
   pillSubtitle: {
     marginTop: 4,
-    color: palette.inkSoft,
-    lineHeight: 20
-  },
-  tipCard: {
-    gap: 8
-  },
-  tipText: {
     color: palette.inkSoft,
     lineHeight: 20
   },

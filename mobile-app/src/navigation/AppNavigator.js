@@ -7,7 +7,6 @@ import CreatePostScreen from "../screens/CreatePostScreen";
 import DaoCreateProposalScreen from "../screens/DaoCreateProposalScreen";
 import DaoDashboardScreen from "../screens/DaoDashboardScreen";
 import DaoProposalDetailScreen from "../screens/DaoProposalDetailScreen";
-import DashboardScreen from "../screens/DashboardScreen";
 import FeedScreen from "../screens/FeedScreen";
 import LoginScreen from "../screens/LoginScreen";
 import MessagesScreen from "../screens/MessagesScreen";
@@ -19,10 +18,10 @@ import { palette, radius } from "../theme";
 const Stack = createNativeStackNavigator();
 const Tabs = createBottomTabNavigator();
 
-function TabGlyph({ focused, label }) {
+function TabPill({ focused, label }) {
   return (
-    <View style={[styles.glyph, focused && styles.glyphActive]}>
-      <Text style={[styles.glyphText, focused && styles.glyphTextActive]}>{label.slice(0, 1)}</Text>
+    <View style={[styles.tabPill, focused && styles.tabPillActive]}>
+      <Text numberOfLines={1} style={[styles.tabPillText, focused && styles.tabPillTextActive]}>{label}</Text>
     </View>
   );
 }
@@ -37,42 +36,35 @@ function MainTabs() {
         headerTitleStyle: { fontWeight: "800", color: palette.ink, fontSize: 17 },
         headerTintColor: palette.ink,
         headerTitle: ({ children }) => <BrandLogo compact wordmark={children !== "Create"} />,
-        tabBarActiveTintColor: palette.blue,
-        tabBarInactiveTintColor: palette.slate,
+        tabBarShowLabel: false,
         tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem
       }}
     >
       <Tabs.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Dashboard" /> }}
-      />
-      <Tabs.Screen
         name="Feed"
         component={FeedScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Feed" /> }}
+        options={{ tabBarIcon: ({ focused }) => <TabPill focused={focused} label="Feed" /> }}
       />
       <Tabs.Screen
         name="CreatePost"
         component={CreatePostScreen}
-        options={{ title: "Create", tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Create" /> }}
+        options={{ title: "Create", tabBarIcon: ({ focused }) => <TabPill focused={focused} label="Create" /> }}
       />
       <Tabs.Screen
         name="Messages"
         component={MessagesScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Messages" /> }}
+        options={{ tabBarIcon: ({ focused }) => <TabPill focused={focused} label="Messages" /> }}
       />
       <Tabs.Screen
         name="DaoDashboard"
         component={DaoDashboardScreen}
-        options={{ title: "DAO", tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="DAO" /> }}
+        options={{ title: "DAO", tabBarIcon: ({ focused }) => <TabPill focused={focused} label="DAO" /> }}
       />
       <Tabs.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ tabBarIcon: ({ focused }) => <TabGlyph focused={focused} label="Profile" /> }}
+        options={{ tabBarIcon: ({ focused }) => <TabPill focused={focused} label="Profile" /> }}
       />
     </Tabs.Navigator>
   );
@@ -123,38 +115,36 @@ const styles = StyleSheet.create({
     backgroundColor: palette.canvas
   },
   tabBar: {
-    height: 76,
-    paddingTop: 8,
-    paddingBottom: 10,
-    backgroundColor: "rgba(248,251,255,0.96)",
+    height: 84,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: "#0f172a",
     borderTopWidth: 0,
     elevation: 0
-  },
-  tabLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 4
   },
   tabItem: {
     paddingVertical: 4
   },
-  glyph: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.md,
+  tabPill: {
+    minWidth: 58,
+    paddingHorizontal: 10,
+    height: 34,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dde7f6"
+    backgroundColor: "rgba(255,255,255,0.08)"
   },
-  glyphActive: {
-    backgroundColor: palette.blue
+  tabPillActive: {
+    backgroundColor: "rgba(34,211,238,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(34,211,238,0.34)"
   },
-  glyphText: {
-    color: palette.inkSoft,
+  tabPillText: {
+    color: "#cbd5e1",
     fontWeight: "800",
-    fontSize: 12
+    fontSize: 11
   },
-  glyphTextActive: {
-    color: "#ffffff"
+  tabPillTextActive: {
+    color: "#ecfeff"
   }
 });
