@@ -23,7 +23,15 @@ async function ensureStore() {
 export async function readDb() {
   const filePath = await ensureStore();
   const raw = await readFile(filePath, "utf8");
-  return JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+  return {
+    ...DEFAULT_DB,
+    ...parsed,
+    challenges: parsed?.challenges || {},
+    usernames: parsed?.usernames || {},
+    identities: parsed?.identities || {},
+    messages: Array.isArray(parsed?.messages) ? parsed.messages : []
+  };
 }
 
 export async function writeDb(nextValue) {

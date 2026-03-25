@@ -12,6 +12,8 @@ export async function registerIdentity(walletAddress, identity) {
   const normalizedWallet = normalizeWallet(walletAddress);
   const normalizedUsername = normalizeUsername(identity.username);
   await updateDb((db) => {
+    db.usernames ||= {};
+    db.identities ||= {};
     db.identities[normalizedWallet] = {
       walletAddress: normalizedWallet,
       username: normalizedUsername,
