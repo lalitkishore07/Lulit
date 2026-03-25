@@ -1,60 +1,461 @@
-import { useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native";
 import ScreenShell from "../components/ScreenShell";
 import SurfaceCard from "../components/SurfaceCard";
 import { useAuth } from "../context/AuthContext";
-import { openMessages } from "../services/webLinks";
+import api from "../services/api";
+import {
+  claimRecipientPrekey,
+  fetchConversations,
+  fetchEncryptedMessage,
+  fetchThread,
+  getMessagingIdentity,
+  registerMessagingIdentity,
+  sendEncryptedMessage
+} from "../services/messagingApi";
+import {
+  buildIdentityRegistrationPayload,
+  createEncryptedEnvelope,
+  decryptEnvelope,
+  MESSAGING_SECURITY_MODE
+} from "../services/messagingCrypto";
+import {
+  clearMessagingSession,
+  restoreMessagingSession,
+  walletLoginForMessaging
+} from "../services/walletMessagingAuth";
 import { palette, radius } from "../theme";
 
-function SecurityPill({ title, subtitle, accent }) {
+const walletPattern = /^0x[a-fA-F0-9]{40}$/;
+
+function messagingErrorMessage(nextError, fallback) {
+  const serverMessage = nextError?.response?.data?.message || "";
+  const status = nextError?.response?.status;
+
+  if (
+    status === 404 &&
+    /Messaging identity not found/i.test(serverMessage)
+  ) {
+    return "That user has not set up secure messages yet. Ask them to open Messages and connect MetaMask once.";
+  }
+
+  if (
+    status === 400 &&
+    /Recipient has no messaging prekeys registered/i.test(serverMessage)
+  ) {
+    return "That user needs to reopen Messages and reconnect MetaMask so their secure keys can refresh.";
+  }
+
+  return serverMessage || nextError.message || fallback;
+}
+
+function normalizeRecipientInput(value) {
+  return String(value || "").trim().replace(/^@/, "");
+}
+
+function formatRelativeTimestamp(value) {
+  if (!value) {
+    return "";
+  }
+
+  const diffMs = Date.now() - new Date(value).getTime();
+  const diffMinutes = Math.max(1, Math.round(diffMs / 60000));
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d`;
+}
+
+function ConversationCard({ item, active, onPress }) {
   return (
-    <View style={[styles.pill, { borderColor: accent, backgroundColor: `${accent}14` }]}>
-      <Text style={[styles.pillTitle, { color: accent }]}>{title}</Text>
-      <Text style={styles.pillSubtitle}>{subtitle}</Text>
+    <Pressable onPress={onPress} style={[styles.chatCard, active && styles.chatCardActive]}>
+      <View style={styles.chatCardHeader}>
+        <View style={styles.chatIdentity}>
+          <View style={[styles.chatAvatar, active && styles.chatAvatarActive]}>
+            <Text style={[styles.chatAvatarText, active && styles.chatAvatarTextActive]}>
+              {String(item.username || "L").slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.chatHandle}>@{item.username}</Text>
+            {item.displayName ? <Text style={styles.chatName}>{item.displayName}</Text> : null}
+          </View>
+        </View>
+        <Text style={styles.chatTime}>{formatRelativeTimestamp(item.lastMessageAt)}</Text>
+      </View>
+      <Text numberOfLines={1} style={styles.chatPreview}>{item.previewLabel || "Secure conversation"}</Text>
+    </Pressable>
+  );
+}
+
+function MessageBubble({ item, username, plaintext, onDecrypt }) {
+  const isOutgoing = item.direction === "OUTGOING";
+  return (
+    <View style={[styles.bubbleWrap, isOutgoing ? styles.bubbleWrapRight : styles.bubbleWrapLeft]}>
+      <View style={[styles.bubble, isOutgoing ? styles.outgoingBubble : styles.incomingBubble]}>
+        <View style={styles.bubbleMetaRow}>
+          <Text style={styles.bubbleLabel}>{isOutgoing ? "You" : `@${username}`}</Text>
+          <Text style={styles.bubbleMeta}>{formatRelativeTimestamp(item.createdAt)}</Text>
+          <Text style={[styles.modeChip, item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? styles.modeChipPrivate : styles.modeChipStandard]}>
+            {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Private" : "Secure"}
+          </Text>
+        </View>
+        {plaintext ? (
+          <Text style={styles.bubbleText}>{plaintext}</Text>
+        ) : (
+          <Pressable onPress={onDecrypt} style={styles.decryptBtn}>
+            <Text style={styles.decryptBtnText}>
+              {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE ? "Unlock Private Message" : "Decrypt Message"}
+            </Text>
+          </Pressable>
+        )}
+        {item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE && plaintext ? (
+          <Text style={styles.privateHint}>Private message auto-clears after 45 seconds.</Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
+async function resolveRecipientProfile(value) {
+  const normalized = normalizeRecipientInput(value);
+  if (!normalized) {
+    throw new Error("Recipient is required");
+  }
+
+  if (walletPattern.test(normalized)) {
+    const { data } = await api.get(`/profile/wallet/${normalized}`);
+    if (!data?.walletAddress) {
+      throw new Error("This wallet is not connected to a Lulit profile yet");
+    }
+    return data;
+  }
+
+  const { data } = await api.get(`/profile/${normalized}`);
+  if (!data?.walletAddress) {
+    throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+  }
+  return data;
+}
+
+async function syncWalletToOwnProfile(walletAddress) {
+  const normalizedWallet = String(walletAddress || "").toLowerCase();
+  if (!normalizedWallet) {
+    return;
+  }
+
+  const { data } = await api.get("/profile/me");
+  if (String(data?.walletAddress || "").toLowerCase() === normalizedWallet) {
+    return;
+  }
+
+  await api.put("/profile/me", {
+    displayName: data?.displayName || "",
+    bio: data?.bio || "",
+    location: data?.location || "",
+    websiteUrl: data?.websiteUrl || "",
+    about: data?.about || "",
+    walletAddress: normalizedWallet,
+    pinnedPostId: data?.pinnedPostId || null
+  });
+}
+
 export default function MessagesScreen() {
   const { user } = useAuth();
-  const [recipient, setRecipient] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+  const [messageTokenReady, setMessageTokenReady] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const normalizedRecipient = recipient.trim().replace(/^@/, "");
+  const [recipient, setRecipient] = useState("");
+  const [draft, setDraft] = useState("");
+  const [securityMode, setSecurityMode] = useState(MESSAGING_SECURITY_MODE.STANDARD);
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [threadMessages, setThreadMessages] = useState([]);
+  const [decryptedMessages, setDecryptedMessages] = useState({});
+  const [sending, setSending] = useState(false);
 
-  const launchMessages = async (username) => {
+  const selectedWallet = selectedConversation?.walletAddress || "";
+
+  const handleSessionFailure = async (nextError) => {
+    if ([401, 403].includes(nextError?.response?.status)) {
+      await clearMessagingSession();
+      setMessageTokenReady(false);
+      setWalletAddress("");
+      setConversations([]);
+      setThreadMessages([]);
+      setSelectedConversation(null);
+      setError("Secure messaging session expired. Connect MetaMask again.");
+      return true;
+    }
+    return false;
+  };
+
+  const enrichCounterparty = async (wallet) => {
+    try {
+      const { data } = await api.get(`/profile/wallet/${wallet}`);
+      return {
+        walletAddress: wallet,
+        username: data.username,
+        displayName: data.displayName || ""
+      };
+    } catch {
+      return {
+        walletAddress: wallet,
+        username: wallet.slice(0, 8),
+        displayName: ""
+      };
+    }
+  };
+
+  const loadConversations = async (preferredWallet = "") => {
+    try {
+      const records = await fetchConversations();
+      const enriched = await Promise.all(
+        records.map(async (record) => ({
+          ...record,
+          ...(await enrichCounterparty(record.counterpartyWallet))
+        }))
+      );
+      setConversations(enriched);
+
+      const pickedWallet = preferredWallet || selectedWallet || enriched[0]?.walletAddress || "";
+      if (pickedWallet) {
+        const picked = enriched.find((item) => item.walletAddress.toLowerCase() === pickedWallet.toLowerCase());
+        if (picked) {
+          setSelectedConversation(picked);
+        }
+      }
+    } catch (nextError) {
+      if (!(await handleSessionFailure(nextError))) {
+        setError(nextError?.response?.data?.message || "Failed to load encrypted inbox");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadThread = async (conversation) => {
+    if (!conversation?.walletAddress) {
+      setThreadMessages([]);
+      return;
+    }
+
+    try {
+      const records = await fetchThread(conversation.walletAddress);
+      setThreadMessages(records);
+    } catch (nextError) {
+      if (!(await handleSessionFailure(nextError))) {
+        setError(nextError?.response?.data?.message || "Unable to open this conversation");
+      }
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const restored = await restoreMessagingSession();
+      if (!mounted) {
+        return;
+      }
+      if (restored.token) {
+        setMessageTokenReady(true);
+        setWalletAddress(restored.walletAddress);
+        await loadConversations();
+      } else {
+        setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedConversation) {
+      return;
+    }
+    loadThread(selectedConversation);
+  }, [selectedConversation]);
+
+  const connectWallet = async () => {
     setError("");
     setStatus("");
     try {
-      await openMessages(username);
-      setStatus(username ? `Opening secure chat with @${username.replace(/^@/, "")}` : "Opening secure messages");
+      const session = await walletLoginForMessaging();
+      setWalletAddress(session.walletAddress);
+      setMessageTokenReady(true);
+      await syncWalletToOwnProfile(session.walletAddress);
+      const identityPayload = await buildIdentityRegistrationPayload();
+      await registerMessagingIdentity(identityPayload);
+      await loadConversations();
+      setStatus("Secure DMs are ready");
     } catch (nextError) {
-      setError(nextError?.message || "Unable to open secure messages");
+      setError(nextError?.response?.data?.message || nextError.message || "Unable to authenticate messaging wallet");
     }
   };
+
+  const startConversation = async () => {
+    setError("");
+    setStatus("");
+    if (!messageTokenReady) {
+      setError("Connect MetaMask first");
+      return;
+    }
+    try {
+      const profile = await resolveRecipientProfile(recipient);
+      const conversation = {
+        walletAddress: profile.walletAddress.toLowerCase(),
+        username: profile.username,
+        displayName: profile.displayName || "",
+        previewLabel: "Start a secure conversation",
+        lastMessageAt: null
+      };
+      setSelectedConversation(conversation);
+      setStatus(`Chat opened with @${profile.username}`);
+      setRecipient("");
+    } catch (nextError) {
+      setError(messagingErrorMessage(nextError, "Unable to start secure chat"));
+    }
+  };
+
+  const handleDecrypt = async (item) => {
+    setError("");
+    try {
+      if (item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+        await walletLoginForMessaging();
+      }
+      const { envelope } = await fetchEncryptedMessage(item.cid);
+      const senderIdentity = item.direction === "INCOMING"
+        ? await getMessagingIdentity(item.senderWallet)
+        : null;
+      const plaintext = await decryptEnvelope(
+        envelope,
+        senderIdentity?.signingPublicKey || envelope.senderSigningPublicKey || ""
+      );
+      setDecryptedMessages((current) => ({
+        ...current,
+        [item.cid]: plaintext
+      }));
+
+      if (item.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+        setTimeout(() => {
+          setDecryptedMessages((current) => {
+            const next = { ...current };
+            delete next[item.cid];
+            return next;
+          });
+        }, 45000);
+      }
+
+      const identityPayload = await buildIdentityRegistrationPayload();
+      await registerMessagingIdentity(identityPayload);
+    } catch (nextError) {
+      setError(messagingErrorMessage(nextError, "Unable to decrypt this message on device"));
+    }
+  };
+
+  const handleSend = async () => {
+    setError("");
+    setStatus("");
+
+    if (!selectedConversation?.walletAddress) {
+      setError("Open or start a conversation first");
+      return;
+    }
+    if (!draft.trim()) {
+      setError("Message required");
+      return;
+    }
+    if (!messageTokenReady || !walletAddress) {
+      setError("Connect MetaMask first");
+      return;
+    }
+
+    setSending(true);
+    try {
+      if (securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+        await walletLoginForMessaging();
+      }
+
+      const recipientWallet = selectedConversation.walletAddress.toLowerCase();
+      await getMessagingIdentity(recipientWallet);
+      const recipientPrekey = await claimRecipientPrekey(recipientWallet);
+      const { envelope, envelopeDigest } = await createEncryptedEnvelope({
+        plaintext: draft,
+        senderWallet: walletAddress,
+        recipientWallet,
+        recipientPrekey,
+        securityMode
+      });
+
+      await sendEncryptedMessage({
+        recipientWallet,
+        envelope,
+        envelopeDigest,
+        prekeyId: recipientPrekey.id,
+        securityMode,
+        signatureBundle: {
+          walletAddress
+        }
+      });
+
+      setDraft("");
+      setStatus(securityMode === MESSAGING_SECURITY_MODE.PRIVATE
+        ? `Private DM sent to @${selectedConversation.username}`
+        : `Secure DM sent to @${selectedConversation.username}`);
+      await loadConversations(recipientWallet);
+      await loadThread(selectedConversation);
+    } catch (nextError) {
+      setError(messagingErrorMessage(nextError, "Unable to send secure DM"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const orderedThread = useMemo(
+    () => threadMessages.map((item) => ({
+      ...item,
+      plaintext: decryptedMessages[item.cid] || ""
+    })),
+    [threadMessages, decryptedMessages]
+  );
 
   return (
     <ScreenShell
       eyebrow="Private Space"
       title="Messages"
-      subtitle="Open the secure DM experience from mobile with username-style chats, private mode, and wallet-backed encryption."
+      subtitle="Native secure DMs with wallet-auth identity, on-device encryption, and shared live state with the web app."
       scroll
       bodyStyle={styles.content}
     >
       <View style={styles.heroPanel}>
         <Text style={styles.kicker}>Secure DMs</Text>
-        <Text style={styles.headline}>Mobile now follows the web messaging direction.</Text>
-        <Text style={styles.subhead}>
-          Start with a username, keep the DM-style flow, and hand off into the live encrypted experience for the deepest security.
-        </Text>
-        <Pressable style={styles.primaryBtn} onPress={() => launchMessages()}>
-          <Text style={styles.primaryBtnText}>Open All Messages</Text>
+        <Text style={styles.headline}>This is now a native mobile inbox, not just a launcher.</Text>
+        <Text style={styles.subhead}>Username-style conversations on top, wallet-backed encryption underneath, synced with the same live messaging service as the web app.</Text>
+        <Pressable style={styles.primaryBtn} onPress={connectWallet}>
+          <Text style={styles.primaryBtnText}>{messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}</Text>
         </Pressable>
+        {walletAddress ? <Text style={styles.walletMeta}>Messaging wallet: {walletAddress}</Text> : null}
+        {user ? <Text style={styles.walletMeta}>Signed in as @{user.username}</Text> : null}
       </View>
 
       <SurfaceCard style={styles.composeCard}>
         <Text style={styles.sectionTitle}>New chat</Text>
-        <Text style={styles.sectionSubtitle}>Type a username the way you would in social DMs.</Text>
         <TextInput
           autoCapitalize="none"
           onChangeText={setRecipient}
@@ -63,51 +464,85 @@ export default function MessagesScreen() {
           style={styles.input}
           value={recipient}
         />
-        <Pressable
-          style={[styles.secondaryBtn, !normalizedRecipient && styles.secondaryBtnDisabled]}
-          onPress={() => launchMessages(recipient)}
-          disabled={!normalizedRecipient}
-        >
-          <Text style={styles.secondaryBtnText}>Chat with @{normalizedRecipient || "username"}</Text>
+        <Pressable style={[styles.secondaryBtn, !recipient.trim() && styles.secondaryBtnDisabled]} onPress={startConversation} disabled={!recipient.trim()}>
+          <Text style={styles.secondaryBtnText}>Open chat</Text>
         </Pressable>
       </SurfaceCard>
 
-      <SurfaceCard style={styles.threadPreview}>
-        <View style={styles.threadHeader}>
-          <View>
-            <Text style={styles.threadHandle}>@{normalizedRecipient || "username"}</Text>
-            <Text style={styles.threadMeta}>Secure conversation preview</Text>
-          </View>
-          <View style={styles.modeWrap}>
-            <Text style={styles.modeChip}>Private</Text>
-          </View>
-        </View>
-
-        <View style={styles.bubbleWrapLeft}>
-          <View style={styles.incomingBubble}>
-            <Text style={styles.bubbleLabel}>@{normalizedRecipient || "username"}</Text>
-            <Text style={styles.bubbleText}>Hey, can we discuss this privately?</Text>
-          </View>
-        </View>
-        <View style={styles.bubbleWrapRight}>
-          <View style={styles.outgoingBubble}>
-            <Text style={styles.bubbleLabel}>You</Text>
-            <Text style={styles.bubbleText}>Yes, opening a secure DM now.</Text>
-          </View>
-        </View>
-      </SurfaceCard>
-
       <View style={styles.securityGrid}>
-        <SecurityPill accent={palette.cyan} title="Standard Secure" subtitle="Everyday encrypted chat with faster flow." />
-        <SecurityPill accent={palette.mint} title="Private Mode" subtitle="Use it for more sensitive messages or media." />
+        <Pressable onPress={() => setSecurityMode(MESSAGING_SECURITY_MODE.STANDARD)} style={[styles.modeCard, securityMode === MESSAGING_SECURITY_MODE.STANDARD && styles.modeCardActiveStandard]}>
+          <Text style={styles.modeTitle}>Standard Secure</Text>
+          <Text style={styles.modeSubtitle}>Faster everyday encrypted chat.</Text>
+        </Pressable>
+        <Pressable onPress={() => setSecurityMode(MESSAGING_SECURITY_MODE.PRIVATE)} style={[styles.modeCard, securityMode === MESSAGING_SECURITY_MODE.PRIVATE && styles.modeCardActivePrivate]}>
+          <Text style={styles.modeTitle}>Private Mode</Text>
+          <Text style={styles.modeSubtitle}>Fresh auth and short-lived plaintext for sensitive chats.</Text>
+        </Pressable>
       </View>
 
-      <SurfaceCard style={styles.accountCard}>
-        <Text style={styles.sectionTitle}>Signed in</Text>
-        <Text style={styles.accountHandle}>@{user?.username || "lulit"}</Text>
-        <Text style={styles.sectionSubtitle}>Your mobile app now points at the live cloud stack and opens the secure web DM flow with the same product identity.</Text>
-        <Pressable style={styles.linkBtn} onPress={() => Linking.openURL("https://frontend-peach-eight-mhrkt5iw5h.vercel.app")}>
-          <Text style={styles.linkBtnText}>Open Live Web App</Text>
+      <SurfaceCard style={styles.listCard}>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Conversations</Text>
+          <Pressable onPress={() => loadConversations()}>
+            <Text style={styles.refreshText}>Refresh</Text>
+          </Pressable>
+        </View>
+        {loading ? (
+          <ActivityIndicator color={palette.blue} />
+        ) : (
+          <FlatList
+            data={conversations}
+            keyExtractor={(item) => item.walletAddress}
+            renderItem={({ item }) => (
+              <ConversationCard
+                item={item}
+                active={selectedWallet.toLowerCase() === item.walletAddress.toLowerCase()}
+                onPress={() => setSelectedConversation(item)}
+              />
+            )}
+            scrollEnabled={false}
+            ListEmptyComponent={<Text style={styles.emptyText}>No secure chats yet.</Text>}
+          />
+        )}
+      </SurfaceCard>
+
+      <SurfaceCard style={styles.threadCard}>
+        <View style={styles.sectionRow}>
+          <View>
+            <Text style={styles.sectionTitle}>{selectedConversation ? `@${selectedConversation.username}` : "Conversation"}</Text>
+            <Text style={styles.sectionSubtitle}>{selectedConversation ? "Messages here sync with the live web app too." : "Open a conversation to send or decrypt."}</Text>
+          </View>
+        </View>
+
+        {orderedThread.length ? (
+          orderedThread.map((item) => (
+            <MessageBubble
+              item={item}
+              key={item.id}
+              plaintext={item.plaintext}
+              username={selectedConversation?.username || "username"}
+              onDecrypt={() => handleDecrypt(item)}
+            />
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No messages in this chat yet.</Text>
+        )}
+
+        <TextInput
+          editable={Boolean(selectedConversation)}
+          multiline
+          onChangeText={setDraft}
+          placeholder={selectedConversation ? `Message @${selectedConversation.username}` : "Open a conversation first"}
+          placeholderTextColor={palette.slate}
+          style={[styles.input, styles.messageInput, !selectedConversation && styles.inputDisabled]}
+          value={draft}
+        />
+        <Pressable
+          style={[styles.sendBtn, (!selectedConversation || sending) && styles.secondaryBtnDisabled]}
+          onPress={handleSend}
+          disabled={!selectedConversation || sending}
+        >
+          <Text style={styles.sendBtnText}>{sending ? "Encrypting..." : "Send DM"}</Text>
         </Pressable>
       </SurfaceCard>
 
@@ -157,73 +592,12 @@ const styles = StyleSheet.create({
     color: "#082f49",
     fontWeight: "900"
   },
+  walletMeta: {
+    color: "#94a3b8",
+    fontSize: 12
+  },
   composeCard: {
     gap: 10
-  },
-  threadPreview: {
-    gap: 12,
-    backgroundColor: "rgba(15,23,42,0.96)"
-  },
-  threadHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  threadHandle: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "900"
-  },
-  threadMeta: {
-    color: "#94a3b8",
-    marginTop: 2
-  },
-  modeWrap: {
-    alignItems: "flex-end"
-  },
-  modeChip: {
-    color: "#bbf7d0",
-    backgroundColor: "rgba(16,185,129,0.16)",
-    borderRadius: 999,
-    overflow: "hidden",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 11,
-    fontWeight: "800"
-  },
-  bubbleWrapLeft: {
-    alignItems: "flex-start"
-  },
-  bubbleWrapRight: {
-    alignItems: "flex-end"
-  },
-  incomingBubble: {
-    maxWidth: "82%",
-    borderRadius: 22,
-    borderTopLeftRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "rgba(255,255,255,0.09)"
-  },
-  outgoingBubble: {
-    maxWidth: "82%",
-    borderRadius: 22,
-    borderTopRightRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    backgroundColor: "rgba(34,211,238,0.18)"
-  },
-  bubbleLabel: {
-    color: "#cbd5e1",
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.7
-  },
-  bubbleText: {
-    color: "#f8fafc",
-    marginTop: 6,
-    lineHeight: 20
   },
   sectionTitle: {
     color: palette.ink,
@@ -234,6 +608,12 @@ const styles = StyleSheet.create({
     color: palette.inkSoft,
     lineHeight: 20
   },
+  sectionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10
+  },
   input: {
     minHeight: 52,
     borderRadius: radius.md,
@@ -243,6 +623,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     color: palette.ink,
     fontWeight: "700"
+  },
+  inputDisabled: {
+    opacity: 0.55
+  },
+  messageInput: {
+    minHeight: 94,
+    paddingTop: 12,
+    textAlignVertical: "top",
+    marginTop: 12
   },
   secondaryBtn: {
     minHeight: 50,
@@ -261,40 +650,193 @@ const styles = StyleSheet.create({
   securityGrid: {
     gap: 10
   },
-  pill: {
+  modeCard: {
     borderWidth: 1,
+    borderColor: palette.line,
     borderRadius: radius.md,
-    padding: 14
+    padding: 14,
+    backgroundColor: "rgba(255,255,255,0.92)"
   },
-  pillTitle: {
+  modeCardActiveStandard: {
+    borderColor: palette.cyan,
+    backgroundColor: "rgba(14,165,233,0.12)"
+  },
+  modeCardActivePrivate: {
+    borderColor: palette.mint,
+    backgroundColor: "rgba(16,185,129,0.12)"
+  },
+  modeTitle: {
+    color: palette.ink,
     fontWeight: "900"
   },
-  pillSubtitle: {
+  modeSubtitle: {
     marginTop: 4,
     color: palette.inkSoft,
     lineHeight: 20
   },
-  accountCard: {
+  listCard: {
     gap: 8
   },
-  accountHandle: {
-    color: palette.ink,
-    fontWeight: "900",
-    fontSize: 20
+  threadCard: {
+    gap: 8
   },
-  linkBtn: {
-    marginTop: 4,
-    minHeight: 48,
+  chatCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10
+  },
+  chatCardActive: {
+    borderColor: "rgba(34,211,238,0.48)",
+    backgroundColor: "rgba(34,211,238,0.08)"
+  },
+  chatCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  chatIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1
+  },
+  chatAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dbeafe"
+  },
+  chatAvatarActive: {
+    backgroundColor: palette.blue
+  },
+  chatAvatarText: {
+    color: palette.ink,
+    fontWeight: "900"
+  },
+  chatAvatarTextActive: {
+    color: "#ffffff"
+  },
+  chatHandle: {
+    color: palette.ink,
+    fontWeight: "900"
+  },
+  chatName: {
+    color: palette.slate,
+    marginTop: 2,
+    fontSize: 12
+  },
+  chatTime: {
+    color: palette.slate,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  chatPreview: {
+    color: palette.inkSoft,
+    marginTop: 8
+  },
+  bubbleWrap: {
+    marginBottom: 10
+  },
+  bubbleWrapLeft: {
+    alignItems: "flex-start"
+  },
+  bubbleWrapRight: {
+    alignItems: "flex-end"
+  },
+  bubble: {
+    maxWidth: "84%",
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  incomingBubble: {
+    backgroundColor: "#0f172a"
+  },
+  outgoingBubble: {
+    backgroundColor: "rgba(34,211,238,0.18)"
+  },
+  bubbleMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6
+  },
+  bubbleLabel: {
+    color: "#e2e8f0",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  bubbleMeta: {
+    color: "#94a3b8",
+    fontSize: 11
+  },
+  modeChip: {
+    overflow: "hidden",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 10,
+    fontWeight: "800"
+  },
+  modeChipStandard: {
+    color: "#cffafe",
+    backgroundColor: "rgba(34,211,238,0.14)"
+  },
+  modeChipPrivate: {
+    color: "#bbf7d0",
+    backgroundColor: "rgba(16,185,129,0.14)"
+  },
+  bubbleText: {
+    color: "#f8fafc",
+    marginTop: 8,
+    lineHeight: 21
+  },
+  decryptBtn: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignSelf: "flex-start"
+  },
+  decryptBtnText: {
+    color: "#f8fafc",
+    fontWeight: "800",
+    fontSize: 12
+  },
+  privateHint: {
+    color: "#bbf7d0",
+    marginTop: 8,
+    fontSize: 11
+  },
+  refreshText: {
+    color: palette.blue,
+    fontWeight: "800"
+  },
+  sendBtn: {
+    minHeight: 50,
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: palette.line,
-    backgroundColor: "#f8fbff"
+    backgroundColor: palette.mint,
+    marginTop: 10
   },
-  linkBtnText: {
-    color: palette.ink,
-    fontWeight: "800"
+  sendBtnText: {
+    color: "#ffffff",
+    fontWeight: "900"
+  },
+  emptyText: {
+    color: palette.slate,
+    textAlign: "center",
+    paddingVertical: 16
   },
   status: {
     color: palette.mint,

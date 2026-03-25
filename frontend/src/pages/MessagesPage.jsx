@@ -19,6 +19,27 @@ const newChatSchema = Yup.object({
 
 const walletPattern = /^0x[a-fA-F0-9]{40}$/;
 
+function messagingErrorMessage(nextError, fallback) {
+  const serverMessage = nextError?.response?.data?.message || "";
+  const status = nextError?.response?.status;
+
+  if (
+    status === 404 &&
+    /Messaging identity not found/i.test(serverMessage)
+  ) {
+    return "That user has not set up secure messages yet. Ask them to open Messages and connect MetaMask once.";
+  }
+
+  if (
+    status === 400 &&
+    /Recipient has no messaging prekeys registered/i.test(serverMessage)
+  ) {
+    return "That user needs to reopen Messages and reconnect MetaMask so their secure prekeys can refresh.";
+  }
+
+  return serverMessage || nextError.message || fallback;
+}
+
 function normalizeRecipientInput(value) {
   return String(value || "").trim().replace(/^@/, "");
 }
@@ -62,6 +83,28 @@ async function resolveRecipientProfile(value) {
   return data;
 }
 
+async function syncWalletToOwnProfile(walletAddress) {
+  const normalizedWallet = String(walletAddress || "").toLowerCase();
+  if (!normalizedWallet) {
+    return;
+  }
+
+  const { data } = await api.get("/profile/me");
+  if (String(data?.walletAddress || "").toLowerCase() === normalizedWallet) {
+    return;
+  }
+
+  await api.put("/profile/me", {
+    displayName: data?.displayName || "",
+    bio: data?.bio || "",
+    location: data?.location || "",
+    websiteUrl: data?.websiteUrl || "",
+    about: data?.about || "",
+    walletAddress: normalizedWallet,
+    pinnedPostId: data?.pinnedPostId || null
+  });
+}
+
 export default function MessagesPage() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -84,6 +127,7 @@ export default function MessagesPage() {
       const session = await walletLoginForMessaging();
       setWalletAddress(session.walletAddress);
       setMessageTokenReady(true);
+      await syncWalletToOwnProfile(session.walletAddress);
       const identityPayload = await buildIdentityRegistrationPayload();
       await registerMessagingIdentity(identityPayload);
       setStatus("Secure DMs are ready");
@@ -234,7 +278,13 @@ export default function MessagesPage() {
         await walletLoginForMessaging();
       }
       const { envelope } = await fetchEncryptedMessage(item.cid);
-      const plaintext = await decryptEnvelope(envelope);
+      const senderIdentity = item.direction === "INCOMING"
+        ? await getMessagingIdentity(item.senderWallet)
+        : null;
+      const plaintext = await decryptEnvelope(
+        envelope,
+        senderIdentity?.signingPublicKey || envelope.senderSigningPublicKey || ""
+      );
       setDecryptedMessages((current) => ({
         ...current,
         [item.cid]: plaintext
@@ -253,7 +303,7 @@ export default function MessagesPage() {
       const identityPayload = await buildIdentityRegistrationPayload();
       await registerMessagingIdentity(identityPayload);
     } catch (nextError) {
-      setError(nextError?.response?.data?.message || nextError.message || "Unable to decrypt message on this device");
+      setError(messagingErrorMessage(nextError, "Unable to decrypt message on this device"));
     }
   };
 
@@ -312,7 +362,7 @@ export default function MessagesPage() {
                     }
                     await startConversation(values.recipient);
                   } catch (nextError) {
-                    setError(nextError?.response?.data?.message || nextError.message || "Unable to start secure chat");
+                    setError(messagingErrorMessage(nextError, "Unable to start secure chat"));
                   } finally {
                     setSubmitting(false);
                   }
@@ -472,7 +522,7 @@ export default function MessagesPage() {
                         await loadConversations(selectedConversation.walletAddress);
                         await loadThread(selectedConversation);
                       } catch (nextError) {
-                        setError(nextError?.response?.data?.message || nextError.message || "Unable to send secure DM");
+                        setError(messagingErrorMessage(nextError, "Unable to send secure DM"));
                       } finally {
                         setSubmitting(false);
                       }
