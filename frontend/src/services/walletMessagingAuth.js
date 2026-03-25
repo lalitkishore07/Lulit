@@ -25,22 +25,50 @@ export function restoreMessagingSession() {
   return { token, walletAddress };
 }
 
+function getWalletError(error, fallback) {
+  if (error?.code === 4001) {
+    return "MetaMask request was rejected.";
+  }
+  if (error?.code === -32002) {
+    return "MetaMask already has a pending request open. Finish that popup first.";
+  }
+  return error?.message || fallback;
+}
+
+export async function getConnectedMessagingWallet() {
+  if (!window.ethereum) {
+    return "";
+  }
+
+  const provider = new BrowserProvider(window.ethereum);
+  const accounts = await provider.send("eth_accounts", []);
+  return accounts?.[0] || "";
+}
+
 export async function walletLoginForMessaging() {
   if (!window.ethereum) {
     throw new Error("MetaMask is required for secure messaging");
   }
 
-  const provider = new BrowserProvider(window.ethereum);
-  const accounts = await provider.send("eth_requestAccounts", []);
-  const walletAddress = accounts?.[0];
-  if (!walletAddress) {
-    throw new Error("Unable to access wallet address");
-  }
+  try {
+    const provider = new BrowserProvider(window.ethereum);
+    let accounts = await provider.send("eth_accounts", []);
+    if (!accounts?.length) {
+      accounts = await provider.send("eth_requestAccounts", []);
+    }
 
-  const signer = await provider.getSigner();
-  const challenge = await requestWalletChallenge(walletAddress);
-  const signature = await signer.signMessage(challenge.message);
-  const session = await verifyWalletAuth(walletAddress, signature);
-  persistSession(walletAddress, session.accessToken);
-  return session;
+    const walletAddress = accounts?.[0];
+    if (!walletAddress) {
+      throw new Error("Unable to access wallet address");
+    }
+
+    const signer = await provider.getSigner();
+    const challenge = await requestWalletChallenge(walletAddress);
+    const signature = await signer.signMessage(challenge.message);
+    const session = await verifyWalletAuth(walletAddress, signature);
+    persistSession(walletAddress, session.accessToken);
+    return session;
+  } catch (error) {
+    throw new Error(getWalletError(error, "Unable to authenticate wallet"));
+  }
 }

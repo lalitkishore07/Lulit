@@ -7,7 +7,7 @@ import { useAuth } from "../hooks/useAuth";
 import { claimRecipientPrekey, fetchConversations, fetchEncryptedMessage, fetchThread, getMessagingIdentity, lookupMessagingIdentityByUsername, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
 import { buildIdentityRegistrationPayload, createEncryptedEnvelope, decryptEnvelope, MESSAGING_SECURITY_MODE } from "../services/messagingCrypto";
 import api from "../services/api";
-import { clearMessagingSession, restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
+import { clearMessagingSession, getConnectedMessagingWallet, restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
 
 const composerSchema = Yup.object({
   plaintext: Yup.string().min(1).max(4000).required("Message required")
@@ -103,12 +103,14 @@ export default function MessagesPage() {
   const [threadMessages, setThreadMessages] = useState([]);
   const [decryptedMessages, setDecryptedMessages] = useState({});
   const [newChatTarget, setNewChatTarget] = useState("");
+  const [connectingWallet, setConnectingWallet] = useState(false);
 
   const selectedWallet = selectedConversation?.walletAddress || "";
 
   const connectWallet = async () => {
     setError("");
     setStatus("");
+    setConnectingWallet(true);
     try {
       const session = await walletLoginForMessaging();
       setWalletAddress(session.walletAddress);
@@ -118,6 +120,8 @@ export default function MessagesPage() {
       setStatus("Secure DMs are ready");
     } catch (nextError) {
       setError(nextError?.response?.data?.message || nextError.message || "Unable to authenticate messaging wallet");
+    } finally {
+      setConnectingWallet(false);
     }
   };
 
@@ -204,6 +208,20 @@ export default function MessagesPage() {
       setMessageTokenReady(true);
       setWalletAddress(restored.walletAddress);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const connectedWallet = await getConnectedMessagingWallet();
+      if (cancelled || !connectedWallet) {
+        return;
+      }
+      setWalletAddress((current) => current || connectedWallet.toLowerCase());
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -322,8 +340,8 @@ export default function MessagesPage() {
               <p className="text-sm text-slate-300">Secure DMs with username-style conversations on top and wallet-based encryption underneath.</p>
               <p className="mt-2 text-xs text-slate-400">No raw wallet entry is needed for normal use. Just open a chat with a username and keep MetaMask connected for encryption.</p>
             </div>
-            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400" onClick={connectWallet} type="button">
-              {messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}
+            <button className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-60" disabled={connectingWallet} onClick={connectWallet} type="button">
+              {connectingWallet ? "Connecting..." : messageTokenReady ? "Wallet Ready" : "Connect MetaMask"}
             </button>
           </div>
           {walletAddress ? <p className="mt-3 text-xs text-slate-400">Messaging wallet: {walletAddress}</p> : null}
