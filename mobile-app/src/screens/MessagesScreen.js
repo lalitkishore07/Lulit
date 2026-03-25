@@ -18,6 +18,7 @@ import {
   fetchEncryptedMessage,
   fetchThread,
   getMessagingIdentity,
+  lookupMessagingIdentityByUsername,
   registerMessagingIdentity,
   sendEncryptedMessage
 } from "../services/messagingApi";
@@ -146,31 +147,17 @@ async function resolveRecipientProfile(value) {
 
   const { data } = await api.get(`/profile/${normalized}`);
   if (!data?.walletAddress) {
-    throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+    try {
+      const identity = await lookupMessagingIdentityByUsername(data?.username || normalized);
+      return {
+        ...data,
+        walletAddress: identity.walletAddress
+      };
+    } catch {
+      throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+    }
   }
   return data;
-}
-
-async function syncWalletToOwnProfile(walletAddress) {
-  const normalizedWallet = String(walletAddress || "").toLowerCase();
-  if (!normalizedWallet) {
-    return;
-  }
-
-  const { data } = await api.get("/profile/me");
-  if (String(data?.walletAddress || "").toLowerCase() === normalizedWallet) {
-    return;
-  }
-
-  await api.put("/profile/me", {
-    displayName: data?.displayName || "",
-    bio: data?.bio || "",
-    location: data?.location || "",
-    websiteUrl: data?.websiteUrl || "",
-    about: data?.about || "",
-    walletAddress: normalizedWallet,
-    pinnedPostId: data?.pinnedPostId || null
-  });
 }
 
 export default function MessagesScreen() {
@@ -299,9 +286,8 @@ export default function MessagesScreen() {
       const session = await walletLoginForMessaging();
       setWalletAddress(session.walletAddress);
       setMessageTokenReady(true);
-      await syncWalletToOwnProfile(session.walletAddress);
       const identityPayload = await buildIdentityRegistrationPayload();
-      await registerMessagingIdentity(identityPayload);
+      await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
       await loadConversations();
       setStatus("Secure DMs are ready");
     } catch (nextError) {
@@ -363,7 +349,7 @@ export default function MessagesScreen() {
       }
 
       const identityPayload = await buildIdentityRegistrationPayload();
-      await registerMessagingIdentity(identityPayload);
+      await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
     } catch (nextError) {
       setError(messagingErrorMessage(nextError, "Unable to decrypt this message on device"));
     }

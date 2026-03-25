@@ -4,6 +4,7 @@ import { config } from "../config.js";
 
 const DEFAULT_DB = {
   challenges: {},
+  usernames: {},
   identities: {},
   messages: []
 };

@@ -5,7 +5,7 @@ import morgan from "morgan";
 import { config } from "./config.js";
 import { requireWalletAuth } from "./middleware/auth.js";
 import { issueChallenge, verifyWalletChallenge } from "./services/walletAuthService.js";
-import { claimOneTimePrekey, getIdentity, registerIdentity } from "./services/identityService.js";
+import { claimOneTimePrekey, findWalletByUsername, getIdentity, registerIdentity } from "./services/identityService.js";
 import { fetchEncryptedEnvelope, uploadEncryptedEnvelope } from "./services/web3StorageService.js";
 import { getMessageRecord, listConversations, listInbox, listThread, registerMessageRecord } from "./services/messageRegistryService.js";
 
@@ -72,6 +72,14 @@ app.post("/api/v1/identities/register", requireWalletAuth, async (req, res) => {
 
 app.get("/api/v1/identities/:walletAddress", requireWalletAuth, async (req, res) => {
   const identity = await getIdentity(req.params.walletAddress);
+  if (!identity) {
+    return res.status(404).json({ message: "Messaging identity not found" });
+  }
+  return res.json(identity);
+});
+
+app.get("/api/v1/identities/lookup/:username", requireWalletAuth, async (req, res) => {
+  const identity = await findWalletByUsername(req.params.username);
   if (!identity) {
     return res.status(404).json({ message: "Messaging identity not found" });
   }

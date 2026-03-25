@@ -1,7 +1,10 @@
 import axios from "axios";
 
+const baseURL = (process.env.EXPO_PUBLIC_MESSAGING_API_BASE_URL || "https://lulit-production.up.railway.app/api/v1").replace(/\/+$/, "");
+
 const messagingApi = axios.create({
-  baseURL: import.meta.env.VITE_MESSAGING_API_BASE_URL || "http://localhost:8090/api/v1"
+  baseURL,
+  timeout: 15000
 });
 
 export function setMessagingAuthToken(token) {
@@ -44,11 +47,6 @@ export async function claimRecipientPrekey(walletAddress) {
 
 export async function sendEncryptedMessage(payload) {
   const { data } = await messagingApi.post("/messages/send", payload);
-  return data;
-}
-
-export async function fetchInbox() {
-  const { data } = await messagingApi.get("/messages/inbox");
   return data;
 }
 

@@ -4,7 +4,7 @@ import * as Yup from "yup";
 import { Link, useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import { useAuth } from "../hooks/useAuth";
-import { claimRecipientPrekey, fetchConversations, fetchEncryptedMessage, fetchThread, getMessagingIdentity, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
+import { claimRecipientPrekey, fetchConversations, fetchEncryptedMessage, fetchThread, getMessagingIdentity, lookupMessagingIdentityByUsername, registerMessagingIdentity, sendEncryptedMessage } from "../services/messagingApi";
 import { buildIdentityRegistrationPayload, createEncryptedEnvelope, decryptEnvelope, MESSAGING_SECURITY_MODE } from "../services/messagingCrypto";
 import api from "../services/api";
 import { clearMessagingSession, restoreMessagingSession, walletLoginForMessaging } from "../services/walletMessagingAuth";
@@ -78,31 +78,17 @@ async function resolveRecipientProfile(value) {
 
   const { data } = await api.get(`/profile/${normalized}`);
   if (!data?.walletAddress) {
-    throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+    try {
+      const identity = await lookupMessagingIdentityByUsername(data?.username || normalized);
+      return {
+        ...data,
+        walletAddress: identity.walletAddress
+      };
+    } catch {
+      throw new Error(`@${data?.username || normalized} has not connected a wallet yet`);
+    }
   }
   return data;
-}
-
-async function syncWalletToOwnProfile(walletAddress) {
-  const normalizedWallet = String(walletAddress || "").toLowerCase();
-  if (!normalizedWallet) {
-    return;
-  }
-
-  const { data } = await api.get("/profile/me");
-  if (String(data?.walletAddress || "").toLowerCase() === normalizedWallet) {
-    return;
-  }
-
-  await api.put("/profile/me", {
-    displayName: data?.displayName || "",
-    bio: data?.bio || "",
-    location: data?.location || "",
-    websiteUrl: data?.websiteUrl || "",
-    about: data?.about || "",
-    walletAddress: normalizedWallet,
-    pinnedPostId: data?.pinnedPostId || null
-  });
 }
 
 export default function MessagesPage() {
@@ -127,9 +113,8 @@ export default function MessagesPage() {
       const session = await walletLoginForMessaging();
       setWalletAddress(session.walletAddress);
       setMessageTokenReady(true);
-      await syncWalletToOwnProfile(session.walletAddress);
       const identityPayload = await buildIdentityRegistrationPayload();
-      await registerMessagingIdentity(identityPayload);
+      await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
       setStatus("Secure DMs are ready");
     } catch (nextError) {
       setError(nextError?.response?.data?.message || nextError.message || "Unable to authenticate messaging wallet");
@@ -301,7 +286,7 @@ export default function MessagesPage() {
       }
 
       const identityPayload = await buildIdentityRegistrationPayload();
-      await registerMessagingIdentity(identityPayload);
+      await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
     } catch (nextError) {
       setError(messagingErrorMessage(nextError, "Unable to decrypt message on this device"));
     }
