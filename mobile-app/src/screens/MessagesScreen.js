@@ -279,6 +279,29 @@ export default function MessagesScreen() {
     loadThread(selectedConversation);
   }, [selectedConversation]);
 
+  useEffect(() => {
+    if (!messageTokenReady || !user?.username) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const identityPayload = await buildIdentityRegistrationPayload();
+        if (cancelled) {
+          return;
+        }
+        await registerMessagingIdentity({ ...identityPayload, username: user.username });
+      } catch {
+        // Ignore background refresh errors so the rest of the screen still works.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [messageTokenReady, user?.username]);
+
   const connectWallet = async () => {
     setError("");
     setStatus("");
@@ -304,6 +327,9 @@ export default function MessagesScreen() {
     }
     try {
       const profile = await resolveRecipientProfile(recipient);
+      if (profile.username?.toLowerCase() === user?.username?.toLowerCase()) {
+        throw new Error("Open chat with another account. You are already logged in as this user.");
+      }
       const conversation = {
         walletAddress: profile.walletAddress.toLowerCase(),
         username: profile.username,
