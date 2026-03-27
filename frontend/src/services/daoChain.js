@@ -40,6 +40,10 @@ function persistWallet(wallet) {
   window.localStorage.removeItem(DAO_WALLET_STORAGE_KEY);
 }
 
+export function clearPersistedDaoWallet() {
+  persistWallet("");
+}
+
 export function getStoredDaoWallet() {
   if (typeof window === "undefined") {
     return "";
@@ -80,6 +84,10 @@ export async function connectAndVerifyWallet() {
   await verifyWalletSession(wallet);
   persistWallet(wallet);
   return wallet;
+}
+
+export function disconnectDaoWallet() {
+  clearPersistedDaoWallet();
 }
 
 export async function loadPersistedWallet() {

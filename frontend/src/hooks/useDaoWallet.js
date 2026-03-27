@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   connectAndVerifyWallet,
+  disconnectDaoWallet,
   fetchWalletGovernanceStats,
   loadPersistedWallet
 } from "../services/daoChain";
@@ -33,6 +34,12 @@ export function useDaoWallet() {
     return nextWallet;
   }, [refreshStats]);
 
+  const disconnect = useCallback(() => {
+    disconnectDaoWallet();
+    setWallet("");
+    setStats(null);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -63,6 +70,7 @@ export function useDaoWallet() {
     stats,
     hydrating,
     connect,
+    disconnect,
     refreshStats
   };
 }

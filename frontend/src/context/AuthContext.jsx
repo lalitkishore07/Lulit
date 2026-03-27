@@ -1,5 +1,7 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from "react";
 import api, { setAuthToken, setRefreshCallback } from "../services/api";
+import { clearPersistedDaoWallet } from "../services/daoChain";
+import { clearMessagingSession } from "../services/walletMessagingAuth";
 
 export const AuthContext = createContext(null);
 
@@ -80,6 +82,8 @@ export function AuthProvider({ children }) {
       setAccessToken("");
       setUser(null);
       localStorage.removeItem("lulit_user");
+      clearPersistedDaoWallet();
+      clearMessagingSession();
     }
   }, []);
 

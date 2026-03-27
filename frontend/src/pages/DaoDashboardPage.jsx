@@ -19,7 +19,7 @@ function votePercent(forVotes, againstVotes, abstainVotes) {
 }
 
 export default function DaoDashboardPage() {
-  const { wallet, stats, hydrating, connect } = useDaoWallet();
+  const { wallet, stats, hydrating, connect, disconnect } = useDaoWallet();
   const [proposals, setProposals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -71,10 +71,10 @@ export default function DaoDashboardPage() {
             <div className="flex gap-2">
               <button
                 className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
-                onClick={handleConnect}
+                onClick={wallet ? disconnect : handleConnect}
                 type="button"
               >
-                {wallet ? "Wallet Connected" : hydrating ? "Checking Wallet..." : "Connect Wallet"}
+                {wallet ? "Disconnect Wallet" : hydrating ? "Checking Wallet..." : "Connect Wallet"}
               </button>
               <Link className="rounded-xl border border-cyan-300/30 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/20" to="/dao/create">
                 Create Proposal
