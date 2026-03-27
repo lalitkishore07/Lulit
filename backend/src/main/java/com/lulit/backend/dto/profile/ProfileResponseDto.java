@@ -25,6 +25,8 @@ public record ProfileResponseDto(
         long followingCount,
         long reactionsReceived,
         boolean following,
+        boolean followingYou,
+        boolean friend,
         List<PostResponseDto> textPosts,
         List<PostResponseDto> mediaPosts,
         List<PostResponseDto> reactedPosts

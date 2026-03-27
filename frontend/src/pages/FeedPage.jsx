@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader";
 import api from "../services/api";
 import { loadPreferences } from "../utils/preferences";
@@ -49,6 +49,9 @@ function MediaPreview({ post, onExpand }) {
 export default function FeedPage() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
+  const [accountQuery, setAccountQuery] = useState("");
+  const [accountResults, setAccountResults] = useState([]);
+  const [searchingAccounts, setSearchingAccounts] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [expandedImage, setExpandedImage] = useState("");
@@ -89,6 +92,33 @@ export default function FeedPage() {
 
   const refreshFeed = () => fetchFeed(true);
 
+  const searchAccounts = async (query) => {
+    const normalized = query.trim();
+    if (!normalized) {
+      setAccountResults([]);
+      return;
+    }
+
+    setSearchingAccounts(true);
+    try {
+      const { data } = await api.get("/profile/search/accounts", {
+        params: { q: normalized }
+      });
+      setAccountResults(data || []);
+    } catch (e) {
+      setError(e?.response?.data?.message || "Failed to search accounts");
+    } finally {
+      setSearchingAccounts(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      searchAccounts(accountQuery);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [accountQuery]);
+
   const validatePost = async (postId, choice) => {
     try {
       const { data } = await api.post(`/posts/${postId}/validate`, { choice });
@@ -109,6 +139,50 @@ export default function FeedPage() {
       <div className="mx-auto max-w-3xl">
         <PageHeader title="Feed" />
         <div className="mb-4">
+          <div className="mb-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="account-search">
+              Search Accounts
+            </label>
+            <input
+              id="account-search"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-400 focus:outline-none"
+              onChange={(event) => setAccountQuery(event.target.value)}
+              placeholder="Type username or display name"
+              value={accountQuery}
+            />
+            {searchingAccounts ? <p className="mt-2 text-xs text-slate-500">Searching accounts...</p> : null}
+            {accountQuery.trim() && !searchingAccounts && accountResults.length === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">No matching accounts</p>
+            ) : null}
+            {accountResults.length > 0 ? (
+              <div className="mt-3 grid gap-2">
+                {accountResults.map((account) => (
+                  <Link
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 hover:border-brand-300 hover:bg-white"
+                    key={account.username}
+                    to={`/profile/${account.username}`}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-200 bg-slate-200">
+                        {account.avatarUrl ? (
+                          <img alt={`${account.username} avatar`} className="h-full w-full object-cover" src={account.avatarUrl} />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">
+                          {account.displayName || account.username}
+                        </p>
+                        <p className="truncate text-xs text-slate-600">@{account.username}</p>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                      {account.friend ? "Friends" : account.following ? "Request Sent" : "View"}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
           <button
             className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={loading}

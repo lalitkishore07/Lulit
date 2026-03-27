@@ -51,6 +51,48 @@ public class SocialService {
     }
 
     @Transactional
+    public ApiStatusDto addFriend(String actorUsername, String targetUsername) {
+        User actor = userRepository.findByUsername(actorUsername)
+                .orElseThrow(() -> new ApiException("Authenticated user not found"));
+        User target = userRepository.findByUsername(targetUsername)
+                .orElseThrow(() -> new ApiException("Target user not found"));
+
+        if (actor.getId().equals(target.getId())) {
+            throw new ApiException("You cannot add yourself as a friend");
+        }
+
+        boolean alreadyFollowing = followerRepository.existsByFollowerIdAndFollowingId(actor.getId(), target.getId());
+        boolean followsBack = followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId());
+
+        if (!alreadyFollowing) {
+            Follower relation = new Follower();
+            relation.setFollower(actor);
+            relation.setFollowing(target);
+            followerRepository.save(relation);
+
+            Notification notification = new Notification();
+            notification.setUser(target);
+            notification.setMessage(actor.getUsername() + " sent you a friend request");
+            notificationRepository.save(notification);
+        }
+
+        if (followsBack || followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId())) {
+            Notification actorNotice = new Notification();
+            actorNotice.setUser(actor);
+            actorNotice.setMessage("You and " + target.getUsername() + " are now friends");
+            notificationRepository.save(actorNotice);
+
+            Notification targetNotice = new Notification();
+            targetNotice.setUser(target);
+            targetNotice.setMessage("You and " + actor.getUsername() + " are now friends");
+            notificationRepository.save(targetNotice);
+            return new ApiStatusDto("You are now friends");
+        }
+
+        return new ApiStatusDto(alreadyFollowing ? "Friend request already sent" : "Friend request sent");
+    }
+
+    @Transactional
     public ApiStatusDto unfollow(String actorUsername, String targetUsername) {
         User actor = userRepository.findByUsername(actorUsername)
                 .orElseThrow(() -> new ApiException("Authenticated user not found"));
@@ -59,6 +101,19 @@ public class SocialService {
 
         followerRepository.deleteByFollowerIdAndFollowingId(actor.getId(), target.getId());
         return new ApiStatusDto("Unfollowed successfully");
+    }
+
+    @Transactional
+    public ApiStatusDto unfriend(String actorUsername, String targetUsername) {
+        User actor = userRepository.findByUsername(actorUsername)
+                .orElseThrow(() -> new ApiException("Authenticated user not found"));
+        User target = userRepository.findByUsername(targetUsername)
+                .orElseThrow(() -> new ApiException("Target user not found"));
+
+        followerRepository.deleteByFollowerIdAndFollowingId(actor.getId(), target.getId());
+        followerRepository.deleteByFollowerIdAndFollowingId(target.getId(), actor.getId());
+
+        return new ApiStatusDto("Friend removed");
     }
 
     @Transactional(readOnly = true)

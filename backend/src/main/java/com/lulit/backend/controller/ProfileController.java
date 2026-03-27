@@ -2,6 +2,7 @@ package com.lulit.backend.controller;
 
 import com.lulit.backend.dto.profile.ProfileResponseDto;
 import com.lulit.backend.dto.profile.ProfileUpdateRequestDto;
+import com.lulit.backend.dto.profile.AccountSearchResultDto;
 import com.lulit.backend.service.ProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/profile")
@@ -56,6 +59,14 @@ public class ProfileController {
     @GetMapping("/wallet/{walletAddress}")
     public ResponseEntity<ProfileResponseDto> byWallet(@PathVariable String walletAddress, Authentication authentication) {
         return ResponseEntity.ok(profileService.profileByWallet(authentication.getName(), walletAddress));
+    }
+
+    @GetMapping("/search/accounts")
+    public ResponseEntity<List<AccountSearchResultDto>> searchAccounts(
+            @RequestParam("q") String query,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(profileService.searchAccounts(authentication.getName(), query));
     }
 
     @GetMapping("/{username}")

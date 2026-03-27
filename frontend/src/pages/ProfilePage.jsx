@@ -74,10 +74,12 @@ export default function ProfilePage() {
     loadProfile();
   }, [viewingUsername, isOwn]);
 
-  const handleFollow = async () => {
+  const handleFriendAction = async () => {
     try {
       if (!profile) return;
-      const endpoint = profile.following ? `/social/unfollow/${profile.username}` : `/social/follow/${profile.username}`;
+      const endpoint = profile.friend
+        ? `/social/unfriend/${profile.username}`
+        : `/social/add-friend/${profile.username}`;
       const { data } = await api.post(endpoint);
       setStatus(data.message || "Done");
       await loadProfile();
@@ -101,6 +103,14 @@ export default function ProfilePage() {
     const combined = [...(profile.textPosts || []), ...(profile.mediaPosts || [])];
     return combined.find((p) => p.id === profile.pinnedPostId) || null;
   }, [profile]);
+
+  const friendButtonLabel = useMemo(() => {
+    if (!profile || isOwn) return "";
+    if (profile.friend) return "Friends";
+    if (profile.followingYou && !profile.following) return "Accept Friend";
+    if (profile.following) return "Request Sent";
+    return "Add Friend";
+  }, [profile, isOwn]);
 
   if (!profile) {
     return (
@@ -147,8 +157,16 @@ export default function ProfilePage() {
                       {showEdit ? "Close Edit" : "Edit Profile"}
                     </button>
                   ) : (
-                    <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white" onClick={handleFollow} type="button">
-                      {profile.following ? "Unfollow" : "Follow"}
+                    <button
+                      className={`rounded-lg px-4 py-2 text-sm font-semibold ${
+                        profile.friend
+                          ? "border border-emerald-300 bg-emerald-50 text-emerald-800"
+                          : "bg-slate-900 text-white"
+                      }`}
+                      onClick={handleFriendAction}
+                      type="button"
+                    >
+                      {friendButtonLabel}
                     </button>
                   )}
                   <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" onClick={handleShare} type="button">
@@ -174,6 +192,7 @@ export default function ProfilePage() {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
+                {profile.friend ? <Badge>Friends</Badge> : null}
                 {profile.walletConnected ? <Badge>Wallet Connected</Badge> : null}
                 {profile.emailVerified ? <Badge>Email Verified</Badge> : null}
                 {profile.daoParticipant ? <Badge>DAO Participant</Badge> : null}

@@ -26,9 +26,19 @@ public class SocialController {
         return ResponseEntity.ok(socialService.follow(authentication.getName(), username));
     }
 
+    @PostMapping("/add-friend/{username}")
+    public ResponseEntity<ApiStatusDto> addFriend(@PathVariable String username, Authentication authentication) {
+        return ResponseEntity.ok(socialService.addFriend(authentication.getName(), username));
+    }
+
     @PostMapping("/unfollow/{username}")
     public ResponseEntity<ApiStatusDto> unfollow(@PathVariable String username, Authentication authentication) {
         return ResponseEntity.ok(socialService.unfollow(authentication.getName(), username));
+    }
+
+    @PostMapping("/unfriend/{username}")
+    public ResponseEntity<ApiStatusDto> unfriend(@PathVariable String username, Authentication authentication) {
+        return ResponseEntity.ok(socialService.unfriend(authentication.getName(), username));
     }
 
     @GetMapping("/notifications")

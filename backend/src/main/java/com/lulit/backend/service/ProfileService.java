@@ -1,6 +1,7 @@
 package com.lulit.backend.service;
 
 import com.lulit.backend.dto.post.PostResponseDto;
+import com.lulit.backend.dto.profile.AccountSearchResultDto;
 import com.lulit.backend.dto.profile.ProfileResponseDto;
 import com.lulit.backend.dto.profile.ProfileUpdateRequestDto;
 import com.lulit.backend.entity.Post;
@@ -62,6 +63,36 @@ public class ProfileService {
         User target = userRepository.findByWalletAddressIgnoreCase(walletAddress)
                 .orElseThrow(() -> new ApiException("Wallet profile not found"));
         return buildProfile(actor, target);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AccountSearchResultDto> searchAccounts(String actorUsername, String query) {
+        User actor = userRepository.findByUsername(actorUsername)
+                .orElseThrow(() -> new ApiException("Authenticated user not found"));
+
+        String normalized = query == null ? "" : query.trim();
+        if (normalized.isBlank()) {
+            return List.of();
+        }
+
+        return userRepository
+                .findTop20ByUsernameContainingIgnoreCaseOrDisplayNameContainingIgnoreCaseOrderByUsernameAsc(normalized, normalized)
+                .stream()
+                .filter(candidate -> !candidate.getId().equals(actor.getId()))
+                .map(candidate -> {
+                    boolean following = followerRepository.existsByFollowerIdAndFollowingId(actor.getId(), candidate.getId());
+                    boolean followingYou = followerRepository.existsByFollowerIdAndFollowingId(candidate.getId(), actor.getId());
+                    return new AccountSearchResultDto(
+                            candidate.getUsername(),
+                            candidate.getDisplayName(),
+                            candidate.getAvatarUrl(),
+                            candidate.getBio(),
+                            following,
+                            followingYou,
+                            following && followingYou
+                    );
+                })
+                .toList();
     }
 
     @Transactional
@@ -129,6 +160,9 @@ public class ProfileService {
         long reactionsReceived = postValidationRepository.countByPostUserId(target.getId());
         boolean following = !actor.getId().equals(target.getId()) &&
                 followerRepository.existsByFollowerIdAndFollowingId(actor.getId(), target.getId());
+        boolean followingYou = !actor.getId().equals(target.getId()) &&
+                followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId());
+        boolean friend = following && followingYou;
 
         List<PostResponseDto> textPosts = postRepository.findTop50ByUserIdAndIpfsCidIsNullOrderByCreatedAtDesc(target.getId())
                 .stream()
@@ -171,6 +205,8 @@ public class ProfileService {
                 followingCount,
                 reactionsReceived,
                 following,
+                followingYou,
+                friend,
                 textPosts,
                 mediaPosts,
                 List.copyOf(reactedUnique.values())
