@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   connectAndVerifyWallet,
   disconnectDaoWallet,
-  fetchWalletGovernanceStats,
-  loadPersistedWallet
+  fetchWalletGovernanceStats
 } from "../services/daoChain";
 
 export function useDaoWallet() {
@@ -41,28 +40,7 @@ export function useDaoWallet() {
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    const hydrate = async () => {
-      try {
-        const restoredWallet = await loadPersistedWallet();
-        if (!active) {
-          return;
-        }
-        setWallet(restoredWallet);
-        await refreshStats(restoredWallet);
-      } finally {
-        if (active) {
-          setHydrating(false);
-        }
-      }
-    };
-
-    hydrate();
-
-    return () => {
-      active = false;
-    };
+    setHydrating(false);
   }, [refreshStats]);
 
   return {
