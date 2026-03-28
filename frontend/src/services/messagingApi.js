@@ -1,7 +1,8 @@
 import axios from "axios";
+import { getMessagingApiBaseUrl } from "./runtimeConfig";
 
 const messagingApi = axios.create({
-  baseURL: import.meta.env.VITE_MESSAGING_API_BASE_URL || "http://localhost:8090/api/v1"
+  baseURL: getMessagingApiBaseUrl()
 });
 
 export function setMessagingAuthToken(token) {

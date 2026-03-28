@@ -23,3 +23,19 @@ export function getApiBaseUrl() {
 export function getBackendOrigin() {
   return getApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
+
+export function getMessagingApiBaseUrl() {
+  const configured = normalizeApiBaseUrl(import.meta.env.VITE_MESSAGING_API_BASE_URL);
+  if (configured) {
+    return configured;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8090/api/v1";
+    }
+  }
+
+  return "https://lulit-production.up.railway.app/api/v1";
+}
