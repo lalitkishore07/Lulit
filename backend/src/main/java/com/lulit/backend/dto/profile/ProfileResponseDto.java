@@ -27,6 +27,8 @@ public record ProfileResponseDto(
         boolean following,
         boolean followingYou,
         boolean friend,
+        boolean friendRequestSent,
+        boolean friendRequestReceived,
         List<PostResponseDto> textPosts,
         List<PostResponseDto> mediaPosts,
         List<PostResponseDto> reactedPosts

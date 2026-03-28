@@ -79,6 +79,8 @@ export default function ProfilePage() {
       if (!profile) return;
       const endpoint = profile.friend
         ? `/social/unfriend/${profile.username}`
+        : profile.friendRequestSent
+          ? `/social/unfriend/${profile.username}`
         : `/social/add-friend/${profile.username}`;
       const { data } = await api.post(endpoint);
       setStatus(data.message || "Done");
@@ -107,8 +109,8 @@ export default function ProfilePage() {
   const friendButtonLabel = useMemo(() => {
     if (!profile || isOwn) return "";
     if (profile.friend) return "Friends";
-    if (profile.followingYou && !profile.following) return "Accept Friend";
-    if (profile.following) return "Request Sent";
+    if (profile.friendRequestReceived) return "Accept Friend";
+    if (profile.friendRequestSent) return "Request Sent";
     return "Add Friend";
   }, [profile, isOwn]);
 

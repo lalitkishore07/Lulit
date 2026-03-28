@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
     List<Notification> findTop30ByUserIdOrderByCreatedAtDesc(Long userId);
+    boolean existsByUserIdAndMessage(Long userId, String message);
+    void deleteByUserIdAndMessage(Long userId, String message);
 }

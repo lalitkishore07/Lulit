@@ -337,7 +337,16 @@ export default function MessagesScreen() {
         previewLabel: "Start a secure conversation",
         lastMessageAt: null
       };
+      setConversations((current) => {
+        const exists = current.some((item) => item.walletAddress.toLowerCase() === conversation.walletAddress);
+        if (exists) {
+          return current;
+        }
+        return [conversation, ...current];
+      });
       setSelectedConversation(conversation);
+      setThreadMessages([]);
+      setDecryptedMessages({});
       setStatus(`Chat opened with @${profile.username}`);
       setRecipient("");
     } catch (nextError) {

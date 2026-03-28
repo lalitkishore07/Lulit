@@ -18,6 +18,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class SocialService {
+    private static final String FRIEND_REQUEST_PREFIX = "FRIEND_REQUEST::";
 
     private final UserRepository userRepository;
     private final FollowerRepository followerRepository;
@@ -61,22 +62,22 @@ public class SocialService {
             throw new ApiException("You cannot add yourself as a friend");
         }
 
-        boolean alreadyFollowing = followerRepository.existsByFollowerIdAndFollowingId(actor.getId(), target.getId());
-        boolean followsBack = followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId());
-
-        if (!alreadyFollowing) {
-            Follower relation = new Follower();
-            relation.setFollower(actor);
-            relation.setFollowing(target);
-            followerRepository.save(relation);
-
-            Notification notification = new Notification();
-            notification.setUser(target);
-            notification.setMessage(actor.getUsername() + " sent you a friend request");
-            notificationRepository.save(notification);
+        boolean actorFollowsTarget = followerRepository.existsByFollowerIdAndFollowingId(actor.getId(), target.getId());
+        boolean targetFollowsActor = followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId());
+        if (actorFollowsTarget && targetFollowsActor) {
+            return new ApiStatusDto("You are already friends");
         }
 
-        if (followsBack || followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId())) {
+        String outgoingRequest = friendRequestMessage(actor.getUsername());
+        String incomingRequest = friendRequestMessage(target.getUsername());
+        boolean alreadyRequested = notificationRepository.existsByUserIdAndMessage(target.getId(), outgoingRequest);
+        boolean hasIncomingRequest = notificationRepository.existsByUserIdAndMessage(actor.getId(), incomingRequest);
+
+        if (hasIncomingRequest) {
+            ensureFollow(actor, target);
+            ensureFollow(target, actor);
+            notificationRepository.deleteByUserIdAndMessage(actor.getId(), incomingRequest);
+
             Notification actorNotice = new Notification();
             actorNotice.setUser(actor);
             actorNotice.setMessage("You and " + target.getUsername() + " are now friends");
@@ -86,10 +87,19 @@ public class SocialService {
             targetNotice.setUser(target);
             targetNotice.setMessage("You and " + actor.getUsername() + " are now friends");
             notificationRepository.save(targetNotice);
-            return new ApiStatusDto("You are now friends");
+            return new ApiStatusDto("Friend request accepted");
         }
 
-        return new ApiStatusDto(alreadyFollowing ? "Friend request already sent" : "Friend request sent");
+        if (alreadyRequested) {
+            return new ApiStatusDto("Friend request already sent");
+        }
+
+        Notification notification = new Notification();
+        notification.setUser(target);
+        notification.setMessage(outgoingRequest);
+        notificationRepository.save(notification);
+
+        return new ApiStatusDto("Friend request sent");
     }
 
     @Transactional
@@ -112,6 +122,8 @@ public class SocialService {
 
         followerRepository.deleteByFollowerIdAndFollowingId(actor.getId(), target.getId());
         followerRepository.deleteByFollowerIdAndFollowingId(target.getId(), actor.getId());
+        notificationRepository.deleteByUserIdAndMessage(target.getId(), friendRequestMessage(actor.getUsername()));
+        notificationRepository.deleteByUserIdAndMessage(actor.getId(), friendRequestMessage(target.getUsername()));
 
         return new ApiStatusDto("Friend removed");
     }
@@ -123,7 +135,28 @@ public class SocialService {
 
         return notificationRepository.findTop30ByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream()
-                .map(n -> new NotificationDto(n.getId(), n.getMessage(), Boolean.TRUE.equals(n.getReadStatus()), n.getCreatedAt()))
+                .map(n -> new NotificationDto(
+                        n.getId(),
+                        n.getMessage().startsWith(FRIEND_REQUEST_PREFIX)
+                                ? n.getMessage().replace(FRIEND_REQUEST_PREFIX, "") + " sent you a friend request"
+                                : n.getMessage(),
+                        Boolean.TRUE.equals(n.getReadStatus()),
+                        n.getCreatedAt()
+                ))
                 .toList();
+    }
+
+    private String friendRequestMessage(String fromUsername) {
+        return FRIEND_REQUEST_PREFIX + fromUsername;
+    }
+
+    private void ensureFollow(User follower, User following) {
+        if (followerRepository.existsByFollowerIdAndFollowingId(follower.getId(), following.getId())) {
+            return;
+        }
+        Follower relation = new Follower();
+        relation.setFollower(follower);
+        relation.setFollowing(following);
+        followerRepository.save(relation);
     }
 }

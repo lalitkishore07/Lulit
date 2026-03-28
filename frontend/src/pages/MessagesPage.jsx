@@ -349,7 +349,16 @@ export default function MessagesPage() {
       lastDirection: "OUTGOING",
       securityMode: MESSAGING_SECURITY_MODE.STANDARD
     };
+    setConversations((current) => {
+      const exists = current.some((item) => item.walletAddress.toLowerCase() === conversation.walletAddress);
+      if (exists) {
+        return current;
+      }
+      return [conversation, ...current];
+    });
     setSelectedConversation(conversation);
+    setThreadMessages([]);
+    setDecryptedMessages({});
     setNewChatTarget("");
     setStatus(`Chat opened with @${profile.username}`);
     return conversation;

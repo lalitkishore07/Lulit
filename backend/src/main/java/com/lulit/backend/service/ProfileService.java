@@ -12,6 +12,7 @@ import com.lulit.backend.entity.PostValidationChoice;
 import com.lulit.backend.entity.User;
 import com.lulit.backend.exception.ApiException;
 import com.lulit.backend.repository.FollowerRepository;
+import com.lulit.backend.repository.NotificationRepository;
 import com.lulit.backend.repository.PostValidationRepository;
 import com.lulit.backend.repository.PostRepository;
 import com.lulit.backend.repository.UserRepository;
@@ -29,11 +30,13 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class ProfileService {
+    private static final String FRIEND_REQUEST_PREFIX = "FRIEND_REQUEST::";
 
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final PostValidationRepository postValidationRepository;
     private final FollowerRepository followerRepository;
+    private final NotificationRepository notificationRepository;
     private final DaoWalletProfileRepository daoWalletProfileRepository;
     private final PinataService pinataService;
 
@@ -163,6 +166,10 @@ public class ProfileService {
         boolean followingYou = !actor.getId().equals(target.getId()) &&
                 followerRepository.existsByFollowerIdAndFollowingId(target.getId(), actor.getId());
         boolean friend = following && followingYou;
+        boolean friendRequestSent = !actor.getId().equals(target.getId()) &&
+                notificationRepository.existsByUserIdAndMessage(target.getId(), friendRequestMessage(actor.getUsername()));
+        boolean friendRequestReceived = !actor.getId().equals(target.getId()) &&
+                notificationRepository.existsByUserIdAndMessage(actor.getId(), friendRequestMessage(target.getUsername()));
 
         List<PostResponseDto> textPosts = postRepository.findTop50ByUserIdAndIpfsCidIsNullOrderByCreatedAtDesc(target.getId())
                 .stream()
@@ -207,6 +214,8 @@ public class ProfileService {
                 following,
                 followingYou,
                 friend,
+                friendRequestSent,
+                friendRequestReceived,
                 textPosts,
                 mediaPosts,
                 List.copyOf(reactedUnique.values())
@@ -245,5 +254,9 @@ public class ProfileService {
         }
         String normalized = value.trim();
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private String friendRequestMessage(String fromUsername) {
+        return FRIEND_REQUEST_PREFIX + fromUsername;
     }
 }
