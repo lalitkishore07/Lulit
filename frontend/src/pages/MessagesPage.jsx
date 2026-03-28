@@ -527,38 +527,55 @@ export default function MessagesPage() {
                   <Formik
                     initialValues={{ plaintext: "", securityMode: MESSAGING_SECURITY_MODE.STANDARD }}
                     validationSchema={composerSchema}
-                    onSubmit={async (values, { resetForm, setSubmitting }) => {
+                onSubmit={async (values, { resetForm, setSubmitting }) => {
                       setError("");
                       setStatus("");
                       try {
                         if (!messageTokenReady || !walletAddress) {
                           throw new Error("Connect MetaMask first");
                         }
-                        if (values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
-                          await walletLoginForMessaging();
-                        }
-
                         const recipientWallet = selectedConversation.walletAddress.toLowerCase();
-                        await getMessagingIdentity(recipientWallet);
-                        const recipientPrekey = await claimRecipientPrekey(recipientWallet);
-                        const { envelope, envelopeDigest } = await createEncryptedEnvelope({
-                          plaintext: values.plaintext,
-                          senderWallet: walletAddress,
-                          recipientWallet,
-                          recipientPrekey,
-                          securityMode: values.securityMode
-                        });
-
-                        await sendEncryptedMessage({
-                          recipientWallet,
-                          envelope,
-                          envelopeDigest,
-                          prekeyId: recipientPrekey.id,
-                          securityMode: values.securityMode,
-                          signatureBundle: {
-                            walletAddress
+                        const sendOnce = async () => {
+                          if (values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+                            await walletLoginForMessaging();
                           }
-                        });
+                          await getMessagingIdentity(recipientWallet);
+                          const recipientPrekey = await claimRecipientPrekey(recipientWallet);
+                          const { envelope, envelopeDigest } = await createEncryptedEnvelope({
+                            plaintext: values.plaintext,
+                            senderWallet: walletAddress,
+                            recipientWallet,
+                            recipientPrekey,
+                            securityMode: values.securityMode
+                          });
+
+                          await sendEncryptedMessage({
+                            recipientWallet,
+                            envelope,
+                            envelopeDigest,
+                            prekeyId: recipientPrekey.id,
+                            securityMode: values.securityMode,
+                            signatureBundle: {
+                              walletAddress
+                            }
+                          });
+                        };
+
+                        try {
+                          await sendOnce();
+                        } catch (retryableError) {
+                          const isAuthError = retryableError?.response?.status === 401 ||
+                            /401/.test(String(retryableError?.message || ""));
+                          if (!isAuthError) {
+                            throw retryableError;
+                          }
+                          const session = await walletLoginForMessaging();
+                          setWalletAddress(session.walletAddress);
+                          setMessageTokenReady(true);
+                          const identityPayload = await buildIdentityRegistrationPayload();
+                          await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
+                          await sendOnce();
+                        }
 
                         setStatus(values.securityMode === MESSAGING_SECURITY_MODE.PRIVATE
                           ? `Private DM sent to @${selectedConversation.username}`

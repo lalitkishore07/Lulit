@@ -416,31 +416,50 @@ export default function MessagesScreen() {
 
     setSending(true);
     try {
-      if (securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
-        await walletLoginForMessaging();
-      }
-
       const recipientWallet = selectedConversation.walletAddress.toLowerCase();
-      await getMessagingIdentity(recipientWallet);
-      const recipientPrekey = await claimRecipientPrekey(recipientWallet);
-      const { envelope, envelopeDigest } = await createEncryptedEnvelope({
-        plaintext: draft,
-        senderWallet: walletAddress,
-        recipientWallet,
-        recipientPrekey,
-        securityMode
-      });
-
-      await sendEncryptedMessage({
-        recipientWallet,
-        envelope,
-        envelopeDigest,
-        prekeyId: recipientPrekey.id,
-        securityMode,
-        signatureBundle: {
-          walletAddress
+      const sendOnce = async () => {
+        if (securityMode === MESSAGING_SECURITY_MODE.PRIVATE) {
+          await walletLoginForMessaging();
         }
-      });
+
+        await getMessagingIdentity(recipientWallet);
+        const recipientPrekey = await claimRecipientPrekey(recipientWallet);
+        const { envelope, envelopeDigest } = await createEncryptedEnvelope({
+          plaintext: draft,
+          senderWallet: walletAddress,
+          recipientWallet,
+          recipientPrekey,
+          securityMode
+        });
+
+        await sendEncryptedMessage({
+          recipientWallet,
+          envelope,
+          envelopeDigest,
+          prekeyId: recipientPrekey.id,
+          securityMode,
+          signatureBundle: {
+            walletAddress
+          }
+        });
+      };
+
+      try {
+        await sendOnce();
+      } catch (retryableError) {
+        const isAuthError = retryableError?.response?.status === 401 ||
+          /401/.test(String(retryableError?.message || ""));
+        if (!isAuthError) {
+          throw retryableError;
+        }
+
+        const session = await walletLoginForMessaging();
+        setWalletAddress(session.walletAddress);
+        setMessageTokenReady(true);
+        const identityPayload = await buildIdentityRegistrationPayload();
+        await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
+        await sendOnce();
+      }
 
       setDraft("");
       setStatus(securityMode === MESSAGING_SECURITY_MODE.PRIVATE
