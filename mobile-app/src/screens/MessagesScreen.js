@@ -41,6 +41,10 @@ function messagingErrorMessage(nextError, fallback) {
   const serverMessage = nextError?.response?.data?.message || "";
   const status = nextError?.response?.status;
 
+  if (status === 401) {
+    return "Session expired. Please login again, then reconnect MetaMask in Messages.";
+  }
+
   if (
     status === 404 &&
     /Messaging identity not found/i.test(serverMessage)
