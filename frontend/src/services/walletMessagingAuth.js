@@ -26,6 +26,15 @@ export function restoreMessagingSession() {
 }
 
 function getWalletError(error, fallback) {
+  const status = error?.response?.status;
+  const serverMessage = error?.response?.data?.message || "";
+
+  if (status === 401) {
+    return "Session expired. Please login again, then reconnect MetaMask in Messages.";
+  }
+  if (serverMessage) {
+    return serverMessage;
+  }
   if (error?.code === 4001) {
     return "MetaMask request was rejected.";
   }
