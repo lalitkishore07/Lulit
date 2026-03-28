@@ -386,6 +386,9 @@ export default function MessagesScreen() {
       const identityPayload = await buildIdentityRegistrationPayload();
       await registerMessagingIdentity({ ...identityPayload, username: user?.username || "" });
     } catch (nextError) {
+      if (await handleSessionFailure(nextError)) {
+        return;
+      }
       setError(messagingErrorMessage(nextError, "Unable to decrypt this message on device"));
     }
   };
@@ -442,6 +445,9 @@ export default function MessagesScreen() {
       await loadConversations(recipientWallet);
       await loadThread(selectedConversation);
     } catch (nextError) {
+      if (await handleSessionFailure(nextError)) {
+        return;
+      }
       setError(messagingErrorMessage(nextError, "Unable to send secure DM"));
     } finally {
       setSending(false);
