@@ -5,6 +5,20 @@ const messagingApi = axios.create({
   baseURL: getMessagingApiBaseUrl()
 });
 
+messagingApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      error.response.data = {
+        ...(error.response.data || {}),
+        message: "Session expired. Please login again, then reconnect MetaMask in Messages."
+      };
+      delete messagingApi.defaults.headers.common.Authorization;
+    }
+    return Promise.reject(error);
+  }
+);
+
 export function setMessagingAuthToken(token) {
   if (token) {
     messagingApi.defaults.headers.common.Authorization = `Bearer ${token}`;
