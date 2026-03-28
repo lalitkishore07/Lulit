@@ -41,7 +41,7 @@ function messagingErrorMessage(nextError, fallback) {
   const serverMessage = nextError?.response?.data?.message || "";
   const status = nextError?.response?.status;
 
-  if (status === 401) {
+  if (status === 401 || /401/.test(String(nextError?.message || ""))) {
     return "Session expired. Please login again, then reconnect MetaMask in Messages.";
   }
 
@@ -318,7 +318,7 @@ export default function MessagesScreen() {
       await loadConversations();
       setStatus("Secure DMs are ready");
     } catch (nextError) {
-      setError(nextError?.response?.data?.message || nextError.message || "Unable to authenticate messaging wallet");
+      setError(messagingErrorMessage(nextError, "Unable to authenticate messaging wallet"));
     }
   };
 
