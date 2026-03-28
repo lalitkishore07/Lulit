@@ -68,7 +68,8 @@ export async function verifyWalletChallenge(walletAddress, signature) {
   });
 
   const token = jwt.sign(tokenPayload.payload, config.jwtSecret, {
-    expiresIn: "12h"
+    // Keep wallet auth alive for the full app session window instead of expiring mid-chat.
+    expiresIn: "30d"
   });
 
   return {

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   connectAndVerifyWallet,
   disconnectDaoWallet,
-  fetchWalletGovernanceStats
+  fetchWalletGovernanceStats,
+  loadPersistedWallet
 } from "../services/daoChain";
 
 export function useDaoWallet() {
@@ -40,7 +41,35 @@ export function useDaoWallet() {
   }, []);
 
   useEffect(() => {
-    setHydrating(false);
+    let active = true;
+    const restore = async () => {
+      try {
+        const hasActiveAppSession = Boolean(window.localStorage.getItem("lulit_user"));
+        if (!hasActiveAppSession) {
+          if (active) {
+            setWallet("");
+            setStats(null);
+          }
+          return;
+        }
+
+        const restoredWallet = await loadPersistedWallet();
+        if (!active) {
+          return;
+        }
+        setWallet(restoredWallet);
+        await refreshStats(restoredWallet);
+      } finally {
+        if (active) {
+          setHydrating(false);
+        }
+      }
+    };
+
+    restore();
+    return () => {
+      active = false;
+    };
   }, [refreshStats]);
 
   return {
