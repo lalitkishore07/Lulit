@@ -139,27 +139,36 @@ export default function FeedPage() {
       <div className="mx-auto max-w-3xl">
         <PageHeader title="Feed" />
         <div className="mb-4">
-          <div className="mb-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm">
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="account-search">
+          <div className="card mb-3 p-3">
+            <label className="feed-meta mb-2 block text-xs font-semibold uppercase tracking-wide" htmlFor="account-search">
               Search Accounts
             </label>
             <input
               id="account-search"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-400 focus:outline-none"
+              className="w-full rounded-xl border px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none"
               onChange={(event) => setAccountQuery(event.target.value)}
               placeholder="Type username or display name"
+              style={{
+                borderColor: "var(--card-border)",
+                background: "var(--nav-bg)",
+                color: "var(--text-strong)"
+              }}
               value={accountQuery}
             />
-            {searchingAccounts ? <p className="mt-2 text-xs text-slate-500">Searching accounts...</p> : null}
+            {searchingAccounts ? <p className="feed-meta mt-2 text-xs">Searching accounts...</p> : null}
             {accountQuery.trim() && !searchingAccounts && accountResults.length === 0 ? (
-              <p className="mt-2 text-xs text-slate-500">No matching accounts</p>
+              <p className="feed-meta mt-2 text-xs">No matching accounts</p>
             ) : null}
             {accountResults.length > 0 ? (
               <div className="mt-3 grid gap-2">
                 {accountResults.map((account) => (
                   <Link
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 hover:border-brand-300 hover:bg-white"
+                    className="flex items-center justify-between rounded-xl border px-3 py-2 transition hover:-translate-y-[1px]"
                     key={account.username}
+                    style={{
+                      borderColor: "var(--card-border)",
+                      background: "var(--nav-bg)"
+                    }}
                     to={`/profile/${account.username}`}
                   >
                     <div className="flex min-w-0 items-center gap-3">
@@ -169,13 +178,20 @@ export default function FeedPage() {
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-900">
+                        <p className="truncate text-sm font-semibold feed-user">
                           {account.displayName || account.username}
                         </p>
-                        <p className="truncate text-xs text-slate-600">@{account.username}</p>
+                        <p className="feed-meta truncate text-xs">@{account.username}</p>
                       </div>
                     </div>
-                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      style={{
+                        background: "var(--chip-bg)",
+                        color: "var(--chip-text)",
+                        border: "1px solid var(--chip-border)"
+                      }}
+                    >
                       {account.friend ? "Friends" : account.following ? "Request Sent" : "View"}
                     </span>
                   </Link>
