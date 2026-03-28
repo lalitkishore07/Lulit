@@ -17,7 +17,19 @@ function normalizeApiBaseUrl(value) {
 }
 
 export function getApiBaseUrl() {
-  return normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL) || `${window.location.origin}/api/v1`;
+  const configured = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+  if (configured) {
+    return configured;
+  }
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return `${window.location.origin}/api/v1`;
+    }
+  }
+
+  return "https://lulit-backend-production.up.railway.app/api/v1";
 }
 
 export function getBackendOrigin() {
