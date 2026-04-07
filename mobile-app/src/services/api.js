@@ -27,6 +27,10 @@ function detectExpoHost() {
 }
 
 function getDefaultBaseUrl() {
+  if (!__DEV__) {
+    return "https://lulit-backend-production.up.railway.app/api/v1";
+  }
+
   if (Platform.OS === "web") {
     const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost";
     return `http://${hostname}:8080/api/v1`;
@@ -154,7 +158,10 @@ async function requestWithRetry(method, path, body, options) {
       path.includes("/auth/refresh") ||
       path.includes("/auth/signup");
 
-    if (error?.response?.status !== 401 || isAuthEndpoint || !refreshHandler) {
+    const status = error?.response?.status;
+    const needsRefresh = status === 401 || status === 403;
+
+    if (!needsRefresh || isAuthEndpoint || !refreshHandler) {
       throw error;
     }
 
